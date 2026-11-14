@@ -2,10 +2,10 @@
   <div class="page">
     <div class="page-head">
       <div>
-        <h2>Templates</h2>
-        <p>Reusable layouts: headers, column rules (watched / department-only), widths and optional starter data.</p>
+        <h2>{{ tr("Templates") }}</h2>
+        <p>{{ tr("Reusable layouts: headers, column rules (watched / department-only), widths and optional starter data.") }}</p>
       </div>
-      <el-button v-if="auth.canCreate" type="primary" :icon="Plus" @click="openDesigner()">New template</el-button>
+      <el-button v-if="auth.canCreate" type="primary" :icon="Plus" @click="openDesigner()">{{ tr("New template") }}</el-button>
     </div>
 
     <div class="cards" v-loading="loading">
@@ -23,14 +23,14 @@
             <small v-if="c.editDepartments?.length">{{ c.editDepartments.join('/') }}</small>
           </span>
         </div>
-        <div class="card-meta">{{ t.definition.rowCount }} rows × {{ t.definition.colCount }} cols · by {{ t.createdBy || 'system' }} · {{ timeAgo(t.createdAt) }}</div>
+        <div class="card-meta">{{ tr('{0} rows × {1} cols · by {2} · {3}', [t.definition.rowCount, t.definition.colCount, t.createdBy || tr('system'), timeAgo(t.createdAt)]) }}</div>
         <div class="card-actions">
-          <el-button size="small" type="primary" :disabled="!auth.canCreate" @click="$router.push({ name: 'sheets', query: { new: 1, template: t.id } })">Use template</el-button>
-          <el-button size="small" :disabled="!canManage(t)" @click="openDesigner(t)">Edit</el-button>
-          <el-button size="small" type="danger" plain :disabled="!canManage(t)" @click="remove(t)">Delete</el-button>
+          <el-button size="small" type="primary" :disabled="!auth.canCreate" @click="$router.push({ name: 'sheets', query: { new: 1, template: t.id } })">{{ tr("Use template") }}</el-button>
+          <el-button size="small" :disabled="!canManage(t)" @click="openDesigner(t)">{{ tr("Edit") }}</el-button>
+          <el-button size="small" type="danger" plain :disabled="!canManage(t)" @click="remove(t)">{{ tr("Delete") }}</el-button>
         </div>
       </div>
-      <el-empty v-if="!loading && !templates.length" description="No templates yet" />
+      <el-empty v-if="!loading && !templates.length" :description="tr('No templates yet')" />
     </div>
 
     <TemplateDesigner v-model="designerOpen" :template="editing" @saved="load" />
@@ -38,6 +38,8 @@
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -74,9 +76,9 @@ function openDesigner(t = null) {
   designerOpen.value = true
 }
 async function remove(t) {
-  await ElMessageBox.confirm(`Delete template "${t.name}"? Sheets created from it are not affected.`, 'Delete template', { type: 'warning' })
+  await ElMessageBox.confirm(tr("Delete template \"{0}\"? Sheets created from it are not affected.", [t.name]), tr("Delete template"), { type: 'warning' })
   await api.delete(`/templates/${t.id}`)
-  ElMessage.success('Template deleted')
+  ElMessage.success(tr("Template deleted"))
   load()
 }
 </script>

@@ -2,29 +2,29 @@
   <el-drawer :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" size="460px" @open="load">
     <template #header>
       <div>
-        <div class="h-title">{{ cell ? `History of ${ref_}` : 'Change history' }}</div>
-        <div class="h-sub">Every edit is recorded with who, when, and the previous value.</div>
+        <div class="h-title">{{ cell ? tr("History of {0}", [ref_]) : tr("Change history") }}</div>
+        <div class="h-sub">{{ tr("Every edit is recorded with who, when, and the previous value.") }}</div>
       </div>
     </template>
     <div v-loading="loading">
       <el-radio-group v-if="!cell" v-model="filter" size="small" class="filter">
-        <el-radio-button value="all">All changes</el-radio-button>
-        <el-radio-button value="watched">Watched only</el-radio-button>
+        <el-radio-button value="all">{{ tr("All changes") }}</el-radio-button>
+        <el-radio-button value="watched">{{ tr("Watched only") }}</el-radio-button>
       </el-radio-group>
-      <el-empty v-if="!loading && !shown.length" description="No changes recorded yet" />
+      <el-empty v-if="!loading && !shown.length" :description="tr('No changes recorded yet')" />
       <el-timeline>
         <el-timeline-item v-for="ch in shown" :key="ch.id" :timestamp="formatTime(ch.changedAt)" :type="ch.watched ? 'warning' : 'primary'" placement="top">
           <div class="change" @click="$emit('jump', { r: ch.row, c: ch.col })">
             <div class="who">
               <b>{{ ch.userName }}</b>
               <span class="dept-pill" :style="deptStyle(ch.departmentCode)">{{ ch.departmentName }}</span>
-              <el-tag v-if="ch.watched" size="small" type="warning" effect="plain">watched</el-tag>
+              <el-tag v-if="ch.watched" size="small" type="warning" effect="plain">{{ tr("watched") }}</el-tag>
             </div>
             <div class="where">{{ ch.cellRef }} · {{ ch.rowLabel }} · {{ ch.columnLabel }}</div>
             <div class="diff"><span class="old">{{ show(ch.oldValue) }}</span> → <span class="new">{{ show(ch.newValue) }}</span></div>
             <div v-if="ch.acknowledgements?.length" class="acks">
               <span v-for="a in ch.acknowledgements" :key="a.userName" class="ack" :class="{ done: a.acknowledgedAt }"
-                    :title="a.acknowledgedAt ? 'Acknowledged ' + formatTime(a.acknowledgedAt) : 'Not yet acknowledged'">
+                    :title="a.acknowledgedAt ? tr('Acknowledged ') + formatTime(a.acknowledgedAt) : tr('Not yet acknowledged')">
                 <el-icon><component :is="a.acknowledgedAt ? 'CircleCheckFilled' : 'Clock'" /></el-icon>{{ a.userName }}
               </span>
             </div>
@@ -36,6 +36,8 @@
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { computed, ref } from 'vue'
 import api from '../api.js'
 import { colName } from '../formula/engine.js'

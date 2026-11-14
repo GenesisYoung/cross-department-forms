@@ -2,44 +2,46 @@
   <div class="page">
     <div class="page-head">
       <div>
-        <h2>Notifications</h2>
-        <p>Changes to watched columns arrive as <b>important</b> and stay here until you acknowledge them.</p>
+        <h2>{{ tr("Notifications") }}</h2>
+        <p>{{ tr("Changes to watched columns arrive as") }} <b>{{ tr("important") }}</b> {{ tr("and stay here until you acknowledge them.") }}</p>
       </div>
       <div class="actions">
         <el-radio-group v-model="filter">
-          <el-radio-button value="unread">Unread</el-radio-button>
-          <el-radio-button value="important">Important</el-radio-button>
-          <el-radio-button value="all">All</el-radio-button>
+          <el-radio-button value="unread">{{ tr("Unread") }}</el-radio-button>
+          <el-radio-button value="important">{{ tr("Important") }}</el-radio-button>
+          <el-radio-button value="all">{{ tr("All") }}</el-radio-button>
         </el-radio-group>
-        <el-button :disabled="!notes.unread" @click="readAll">Mark all read</el-button>
+        <el-button :disabled="!notes.unread" @click="readAll">{{ tr("Mark all read") }}</el-button>
       </div>
     </div>
 
     <div class="list" v-loading="loading">
-      <el-empty v-if="!loading && !shown.length" description="You're all caught up" />
+      <el-empty v-if="!loading && !shown.length" :description="tr('You\'re all caught up')" />
       <div v-for="n in shown" :key="n.id" class="item" :class="{ unread: !n.readAt, important: n.severity === 'IMPORTANT' }">
-        <el-icon class="icon"><component :is="n.severity === 'IMPORTANT' ? 'WarningFilled' : n.type === 'SHEET_SHARED' ? 'Share' : 'InfoFilled'" /></el-icon>
+        <el-icon class="icon"><component :is="n.severity === 'IMPORTANT' ? 'WarningFilled' : n.type === 'SHEET_SHARED' ? tr('Share') : 'InfoFilled'" /></el-icon>
         <div class="body">
           <div class="title">{{ n.title }}</div>
           <pre class="msg">{{ n.message }}</pre>
           <div class="meta">
             {{ n.actorName }} · {{ n.actorDepartment }} · {{ formatTime(n.createdAt) }}
-            <span v-if="n.readAt"> · {{ n.severity === 'IMPORTANT' ? 'acknowledged' : 'read' }} {{ timeAgo(n.readAt) }}</span>
+            <span v-if="n.readAt"> · {{ n.severity === 'IMPORTANT' ? tr('acknowledged') : tr('read') }} {{ timeAgo(n.readAt) }}</span>
           </div>
         </div>
         <div class="btns">
-          <el-button v-if="n.sheetId" size="small" @click="open(n)">Open sheet</el-button>
+          <el-button v-if="n.sheetId" size="small" @click="open(n)">{{ tr("Open sheet") }}</el-button>
           <el-button v-if="!n.readAt" size="small" :type="n.severity === 'IMPORTANT' ? 'warning' : 'default'" @click="read(n)">
-            {{ n.severity === 'IMPORTANT' ? 'Acknowledge' : 'Mark read' }}
+            {{ n.severity === 'IMPORTANT' ? tr("Acknowledge") : tr("Mark read") }}
           </el-button>
         </div>
       </div>
-      <el-button v-if="hasMore" class="more" @click="loadMore">Load more</el-button>
+      <el-button v-if="hasMore" class="more" @click="loadMore">{{ tr("Load more") }}</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api.js'

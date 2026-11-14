@@ -13,26 +13,26 @@
                 <el-tag size="small" :type="accessTag.type" effect="plain" class="access">{{ accessTag.label }}</el-tag>
               </el-tooltip>
             </div>
-            <div class="sheet-sub">{{ sheet.description || 'No description' }} · v{{ sheet.version }} · updated {{ timeAgo(sheet.updatedAt) }}</div>
+            <div class="sheet-sub">{{ sheet.description || tr("No description") }} · v{{ sheet.version }} {{ tr("· updated") }} {{ timeAgo(sheet.updatedAt) }}</div>
           </div>
         </div>
         <div class="title-right">
-          <span class="live" :class="{ on: live }"><i></i>{{ live ? 'Live' : 'Reconnecting…' }}</span>
-          <el-tooltip :content="sheet.subscribed ? 'You get a notification for every change' : 'Get notified about every change (watched columns always notify)'">
+          <span class="live" :class="{ on: live }"><i></i>{{ live ? tr("Live") : tr("Reconnecting…") }}</span>
+          <el-tooltip :content="sheet.subscribed ? tr('You get a notification for every change') : tr('Get notified about every change (watched columns always notify)')">
             <el-button :type="sheet.subscribed ? 'primary' : 'default'" plain :icon="sheet.subscribed ? 'BellFilled' : 'Bell'" @click="toggleSubscribe">
-              {{ sheet.subscribed ? 'Following' : 'Follow' }}
+              {{ sheet.subscribed ? tr("Following") : tr("Follow") }}
             </el-button>
           </el-tooltip>
-          <el-button :icon="Clock" @click="openHistory()">History</el-button>
-          <el-button v-if="isOwner" :icon="Share" @click="shareOpen = true">Share</el-button>
+          <el-button :icon="Clock" @click="openHistory()">{{ tr("History") }}</el-button>
+          <el-button v-if="isOwner" :icon="Share" @click="shareOpen = true">{{ tr("Share") }}</el-button>
           <el-dropdown trigger="click" @command="onMore">
             <el-button :icon="MoreFilled" />
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="export" :icon="Download">Export to Excel (.xlsx)</el-dropdown-item>
-                <el-dropdown-item command="template" :icon="DocumentCopy" :disabled="!auth.canCreate">Save as template…</el-dropdown-item>
-                <el-dropdown-item command="settings" :icon="Setting" :disabled="!isOwner">Sheet settings…</el-dropdown-item>
-                <el-dropdown-item command="delete" :icon="Delete" :disabled="!isOwner" divided>Delete sheet</el-dropdown-item>
+                <el-dropdown-item command="export" :icon="Download">{{ tr("Export to Excel (.xlsx)") }}</el-dropdown-item>
+                <el-dropdown-item command="template" :icon="DocumentCopy" :disabled="!auth.canCreate">{{ tr("Save as template…") }}</el-dropdown-item>
+                <el-dropdown-item command="settings" :icon="Setting" :disabled="!isOwner">{{ tr("Sheet settings…") }}</el-dropdown-item>
+                <el-dropdown-item command="delete" :icon="Delete" :disabled="!isOwner" divided>{{ tr("Delete sheet") }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -42,36 +42,36 @@
       <!-- toolbar -->
       <div class="toolbar">
         <el-button-group>
-          <el-tooltip content="Undo (Ctrl+Z)"><el-button size="small" :icon="RefreshLeft" :disabled="!undoStack.length" @click="undo" /></el-tooltip>
-          <el-tooltip content="Redo (Ctrl+Y)"><el-button size="small" :icon="RefreshRight" :disabled="!redoStack.length" @click="redo" /></el-tooltip>
+          <el-tooltip :content="tr('Undo (Ctrl+Z)')"><el-button size="small" :icon="RefreshLeft" :disabled="!undoStack.length" @click="undo" /></el-tooltip>
+          <el-tooltip :content="tr('Redo (Ctrl+Y)')"><el-button size="small" :icon="RefreshRight" :disabled="!redoStack.length" @click="redo" /></el-tooltip>
         </el-button-group>
         <span class="sep"></span>
         <el-button-group>
-          <el-tooltip content="Bold (Ctrl+B)"><el-button size="small" :type="activeStyle.b ? 'primary' : 'default'" @click="toggleStyle('b')"><b>B</b></el-button></el-tooltip>
-          <el-tooltip content="Italic (Ctrl+I)"><el-button size="small" :type="activeStyle.i ? 'primary' : 'default'" @click="toggleStyle('i')"><i>I</i></el-button></el-tooltip>
+          <el-tooltip :content="tr('Bold (Ctrl+B)')"><el-button size="small" :type="activeStyle.b ? 'primary' : 'default'" @click="toggleStyle('b')"><b>B</b></el-button></el-tooltip>
+          <el-tooltip :content="tr('Italic (Ctrl+I)')"><el-button size="small" :type="activeStyle.i ? 'primary' : 'default'" @click="toggleStyle('i')"><i>I</i></el-button></el-tooltip>
         </el-button-group>
         <el-button-group>
-          <el-button size="small" :type="activeStyle.al === 'left' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'left' ? null : 'left')" title="Align left">⟸</el-button>
-          <el-button size="small" :type="activeStyle.al === 'center' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'center' ? null : 'center')" title="Center">≡</el-button>
-          <el-button size="small" :type="activeStyle.al === 'right' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'right' ? null : 'right')" title="Align right">⟹</el-button>
+          <el-button size="small" :type="activeStyle.al === 'left' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'left' ? null : 'left')" :title="tr('Align left')">⟸</el-button>
+          <el-button size="small" :type="activeStyle.al === 'center' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'center' ? null : 'center')" :title="tr('Center')">≡</el-button>
+          <el-button size="small" :type="activeStyle.al === 'right' ? 'primary' : 'default'" @click="setStyle('al', activeStyle.al === 'right' ? null : 'right')" :title="tr('Align right')">⟹</el-button>
         </el-button-group>
-        <el-tooltip content="Fill color">
+        <el-tooltip :content="tr('Fill color')">
           <span class="picker"><el-color-picker size="small" :model-value="activeStyle.bg || null" :predefine="FILLS" @change="(v) => setStyle('bg', v)" /></span>
         </el-tooltip>
-        <el-tooltip content="Text color">
+        <el-tooltip :content="tr('Text color')">
           <span class="picker"><el-color-picker size="small" :model-value="activeStyle.fc || null" :predefine="TEXTS" @change="(v) => setStyle('fc', v)" /></span>
         </el-tooltip>
         <el-select size="small" class="fmt" :model-value="activeStyle.fmt || ''" @change="(v) => setStyle('fmt', v || null)">
-          <el-option v-for="f in FORMATS" :key="f.value" :label="f.label" :value="f.value" />
+          <el-option v-for="f in FORMATS" :key="f.value" :label="tr(f.label)" :value="f.value" />
         </el-select>
         <span class="sep"></span>
-        <el-button size="small" :icon="Plus" :disabled="!canRows" @click="structure('APPEND_ROWS', 0, 50)">50 rows</el-button>
-        <el-button size="small" :icon="Plus" :disabled="!isOwner" @click="structure('APPEND_COLS', 0, 1)">Column</el-button>
-        <el-button size="small" :icon="Operation" :disabled="!isOwner" @click="openColumn(selection.c)">Column rules</el-button>
+        <el-button size="small" :icon="Plus" :disabled="!canRows" @click="structure('APPEND_ROWS', 0, 50)">{{ tr("50 rows") }}</el-button>
+        <el-button size="small" :icon="Plus" :disabled="!isOwner" @click="structure('APPEND_COLS', 0, 1)">{{ tr("Column") }}</el-button>
+        <el-button size="small" :icon="Operation" :disabled="!isOwner" @click="openColumn(selection.c)">{{ tr("Column rules") }}</el-button>
         <span class="grow"></span>
-        <span class="legend"><el-icon class="watch"><Bell /></el-icon> watched column</span>
-        <span class="legend"><el-icon><Lock /></el-icon> column reserved for a department</span>
-        <span class="legend"><i class="ro-swatch"></i> read-only for you</span>
+        <span class="legend"><el-icon class="watch"><Bell /></el-icon> {{ tr("watched column") }}</span>
+        <span class="legend"><el-icon><Lock /></el-icon> {{ tr("column reserved for a department") }}</span>
+        <span class="legend"><i class="ro-swatch"></i> {{ tr("read-only for you") }}</span>
       </div>
 
       <!-- formula bar -->
@@ -85,7 +85,7 @@
           :fetch-suggestions="suggestFunctions"
           :trigger-on-focus="false"
           :disabled="!!activeReadonly"
-          :placeholder="activeReadonly ? 'Read-only: ' + activeReadonly : 'Type a value or a formula, e.g. =SUM(E2:E20)'"
+          :placeholder="activeReadonly ? tr('Read-only: ') + activeReadonly : tr('Type a value or a formula, e.g. =SUM(E2:E20)')"
           @select="onFunctionPick"
           @keydown.enter.prevent="commitFormulaBar"
           @keydown.esc="resetFormulaBar(); grid?.focus()"
@@ -112,13 +112,13 @@
       />
 
       <div class="status-bar">
-        <span v-if="stats.count > 1">Count: {{ stats.count }}</span>
-        <span v-if="stats.nums">Sum: {{ fmt(stats.sum) }}</span>
-        <span v-if="stats.nums">Avg: {{ fmt(stats.sum / stats.nums) }}</span>
+        <span v-if="stats.count > 1">{{ tr("Count:") }} {{ stats.count }}</span>
+        <span v-if="stats.nums">{{ tr("Sum:") }} {{ fmt(stats.sum) }}</span>
+        <span v-if="stats.nums">{{ tr("Avg:") }} {{ fmt(stats.sum / stats.nums) }}</span>
         <span class="grow"></span>
-        <span v-if="saving" class="saving"><el-icon class="is-loading"><Loading /></el-icon> Saving…</span>
-        <span v-else-if="lastSaved">All changes saved</span>
-        <span v-if="lastRemote" class="remote">Last update by {{ lastRemote.by }} · {{ timeAgo(lastRemote.at) }}</span>
+        <span v-if="saving" class="saving"><el-icon class="is-loading"><Loading /></el-icon> {{ tr("Saving…") }}</span>
+        <span v-else-if="lastSaved">{{ tr("All changes saved") }}</span>
+        <span v-if="lastRemote" class="remote">{{ tr("Last update by") }} {{ lastRemote.by }} · {{ timeAgo(lastRemote.at) }}</span>
       </div>
     </template>
 
@@ -126,35 +126,37 @@
     <ColumnDialog v-if="sheet" v-model="columnOpen" :sheet-id="sheet.id" :col="columnIndex" :column="columnsByIndex[columnIndex]" :header="headerText(columnIndex)" @saved="reload" />
     <HistoryDrawer v-if="sheet" v-model="historyOpen" :sheet-id="sheet.id" :cell="historyCell" @jump="jumpTo" />
 
-    <el-dialog v-model="settingsOpen" title="Sheet settings" width="480px">
+    <el-dialog v-model="settingsOpen" :title="tr('Sheet settings')" width="480px">
       <el-form label-position="top">
-        <el-form-item label="Name"><el-input v-model="settings.name" maxlength="160" /></el-form-item>
-        <el-form-item label="Description"><el-input v-model="settings.description" type="textarea" maxlength="500" /></el-form-item>
-        <el-form-item label="Header rows (frozen, owner-only)"><el-input-number v-model="settings.headerRows" :min="0" :max="20" /></el-form-item>
+        <el-form-item :label="tr('Name')"><el-input v-model="settings.name" maxlength="160" /></el-form-item>
+        <el-form-item :label="tr('Description')"><el-input v-model="settings.description" type="textarea" maxlength="500" /></el-form-item>
+        <el-form-item :label="tr('Header rows (frozen, owner-only)')"><el-input-number v-model="settings.headerRows" :min="0" :max="20" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="settingsOpen = false">Cancel</el-button>
-        <el-button type="primary" @click="saveSettings">Save</el-button>
+        <el-button @click="settingsOpen = false">{{ tr("Cancel") }}</el-button>
+        <el-button type="primary" @click="saveSettings">{{ tr("Save") }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="templateOpen" title="Save as template" width="480px">
+    <el-dialog v-model="templateOpen" :title="tr('Save as template')" width="480px">
       <el-form label-position="top">
-        <el-form-item label="Template name"><el-input v-model="templateForm.name" maxlength="120" /></el-form-item>
-        <el-form-item label="Description"><el-input v-model="templateForm.description" type="textarea" maxlength="500" /></el-form-item>
+        <el-form-item :label="tr('Template name')"><el-input v-model="templateForm.name" maxlength="120" /></el-form-item>
+        <el-form-item :label="tr('Description')"><el-input v-model="templateForm.description" type="textarea" maxlength="500" /></el-form-item>
         <el-form-item>
-          <el-checkbox v-model="templateForm.includeData">Include current data (otherwise only headers, column rules and widths)</el-checkbox>
+          <el-checkbox v-model="templateForm.includeData">{{ tr("Include current data (otherwise only headers, column rules and widths)") }}</el-checkbox>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="templateOpen = false">Cancel</el-button>
-        <el-button type="primary" :disabled="!templateForm.name" @click="saveTemplate">Save template</el-button>
+        <el-button @click="templateOpen = false">{{ tr("Cancel") }}</el-button>
+        <el-button type="primary" :disabled="!templateForm.name" @click="saveTemplate">{{ tr("Save template") }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -176,7 +178,7 @@ const auth = useAuth()
 const FILLS = ['#ffffff', '#fff3c4', '#ffe0cc', '#ffd6d6', '#dff5e1', '#dcebff', '#ece3ff', '#e8eef9', '#f0f0f0']
 const TEXTS = ['#1f2329', '#c0392b', '#d35400', '#1e8449', '#1f4e8c', '#7d3c98', '#7f8c8d']
 const FORMATS = [
-  { label: 'General', value: '' }, { label: '0', value: '0' }, { label: '0.00', value: '0.00' },
+  { label: "General", value: '' }, { label: '0', value: '0' }, { label: '0.00', value: '0.00' },
   { label: '1,234', value: '#,##0' }, { label: '1,234.00', value: '#,##0.00' }, { label: '12%', value: '0%' }, { label: '12.3%', value: '0.0%' }
 ]
 
@@ -231,27 +233,27 @@ const canRows = computed(() => ['OWNER', 'EDIT'].includes(sheet.value?.access))
 /** Mirrors the server-side rule in PermissionService.denyReason (the server stays authoritative). */
 function canEdit(r, c) {
   const s = sheet.value
-  if (!s) return 'loading'
+  if (!s) return tr('loading')
   if (s.access === 'OWNER') return null
-  if (r < s.headerRows) return 'header rows can only be edited by the sheet owner'
+  if (r < s.headerRows) return tr('header rows can only be edited by the sheet owner')
   const depts = columnsByIndex.value[c]?.editDepartments ?? []
-  if (depts.length) return depts.includes(auth.deptCode) ? null : 'this column is reserved for ' + depts.join(', ')
-  return s.access === 'EDIT' ? null : 'your department has view-only access'
+  if (depts.length) return depts.includes(auth.deptCode) ? null : tr('this column is reserved for ') + depts.join(', ')
+  return s.access === 'EDIT' ? null : tr('your department has view-only access')
 }
 
 const accessTag = computed(() => ({
-  OWNER: { label: 'Owner', type: 'success' },
-  EDIT: { label: 'Can edit', type: 'primary' },
-  VIEW: { label: 'View only', type: 'info' }
+  OWNER: { label: tr("Owner"), type: 'success' },
+  EDIT: { label: tr("Can edit"), type: 'primary' },
+  VIEW: { label: tr("View only"), type: 'info' }
 }[sheet.value?.access] ?? { label: '', type: 'info' }))
 const accessHelp = computed(() => {
   const own = columnsByIndex.value.filter((c) => c?.editDepartments?.includes(auth.deptCode)).map((c) => c.title || colName(c.index))
   const base = {
-    OWNER: 'You manage this sheet: sharing, column rules, header rows and structure.',
-    EDIT: 'Your department can edit data rows (except columns reserved for other departments).',
-    VIEW: 'Your department can view this sheet.'
+    OWNER: tr("You manage this sheet: sharing, column rules, header rows and structure."),
+    EDIT: tr("Your department can edit data rows (except columns reserved for other departments)."),
+    VIEW: tr("Your department can view this sheet.")
   }[sheet.value?.access] ?? ''
-  return own.length ? `${base} You can edit: ${own.join(', ')}.` : base
+  return own.length ? tr("{0} You can edit: {1}.", [base, own.join(', ')]) : base
 })
 
 function refresh() {
@@ -357,8 +359,8 @@ function setStyle(prop, value) {
       edits.push({ r, c, v: getRaw(r, c), s: so })
     }
   }
-  if (blocked) ElMessage.warning(`${blocked} read-only cell(s) skipped`)
-  if (edits.length > 20000) return ElMessage.warning('Select a smaller range to format')
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) skipped", [blocked]))
+  if (edits.length > 20000) return ElMessage.warning(tr("Select a smaller range to format"))
   applyEdits(edits)
   grid.value?.focus()
 }
@@ -450,10 +452,10 @@ async function onGridAction(action, sel) {
     case 'insert-col-left': return structure('INSERT_COLS', sel.c1, sel.c2 - sel.c1 + 1)
     case 'insert-col-right': return structure('INSERT_COLS', sel.c2 + 1, sel.c2 - sel.c1 + 1)
     case 'delete-rows':
-      await ElMessageBox.confirm(`Delete rows ${sel.r1 + 1}–${sel.r2 + 1}? Formulas pointing at them become #REF!.`, 'Delete rows', { type: 'warning' })
+      await ElMessageBox.confirm(tr("Delete rows {0}–{1}? Formulas pointing at them become #REF!.", [sel.r1 + 1, sel.r2 + 1]), tr("Delete rows"), { type: 'warning' })
       return structure('DELETE_ROWS', sel.r1, sel.r2 - sel.r1 + 1)
     case 'delete-cols':
-      await ElMessageBox.confirm(`Delete columns ${colName(sel.c1)}–${colName(sel.c2)} including their rules?`, 'Delete columns', { type: 'warning' })
+      await ElMessageBox.confirm(tr("Delete columns {0}–{1} including their rules?", [colName(sel.c1), colName(sel.c2)]), tr("Delete columns"), { type: 'warning' })
       return structure('DELETE_COLS', sel.c1, sel.c2 - sel.c1 + 1)
   }
 }
@@ -471,13 +473,13 @@ async function toggleSubscribe() {
   const s = sheet.value
   const res = s.subscribed ? await api.delete(`/sheets/${s.id}/subscription`) : await api.put(`/sheets/${s.id}/subscription`)
   s.subscribed = res.subscribed
-  ElMessage.success(res.subscribed ? 'You will be notified about every change' : 'Unfollowed (watched columns still notify you)')
+  ElMessage.success(res.subscribed ? tr("You will be notified about every change") : tr("Unfollowed (watched columns still notify you)"))
 }
 async function onMore(cmd) {
   const s = sheet.value
   if (cmd === 'export') return download(`/sheets/${s.id}/export`, s.name + '.xlsx')
   if (cmd === 'template') {
-    Object.assign(templateForm, { name: s.name + ' template', description: s.description || '', includeData: false })
+    Object.assign(templateForm, { name: s.name + tr(' template'), description: s.description || '', includeData: false })
     templateOpen.value = true
   }
   if (cmd === 'settings') {
@@ -485,9 +487,9 @@ async function onMore(cmd) {
     settingsOpen.value = true
   }
   if (cmd === 'delete') {
-    await ElMessageBox.confirm(`Delete "${s.name}" and its whole change history? This cannot be undone.`, 'Delete sheet', { type: 'warning', confirmButtonText: 'Delete' })
+    await ElMessageBox.confirm(tr("Delete \"{0}\" and its whole change history? This cannot be undone.", [s.name]), tr("Delete sheet"), { type: 'warning', confirmButtonText: tr("Delete") })
     await api.delete(`/sheets/${s.id}`)
-    ElMessage.success('Sheet deleted')
+    ElMessage.success(tr("Sheet deleted"))
     router.push({ name: 'sheets' })
   }
 }
@@ -499,7 +501,7 @@ async function saveSettings() {
 async function saveTemplate() {
   await api.post(`/sheets/${sheet.value.id}/save-as-template`, templateForm)
   templateOpen.value = false
-  ElMessage.success('Template saved')
+  ElMessage.success(tr("Template saved"))
 }
 
 // ------------------------------------------------------------------ realtime
@@ -512,7 +514,7 @@ function scheduleReload() {
 function onSheetEvent(e) {
   const mine = e.clientId === CLIENT_ID
   if (e.type === 'SHEET_DELETED') {
-    if (!mine) { ElMessage.warning(`"${e.sheetName}" was deleted by ${e.actorName}`); router.push({ name: 'sheets' }) }
+    if (!mine) { ElMessage.warning(tr("\"{0}\" was deleted by {1}", [e.sheetName, e.actorName])); router.push({ name: 'sheets' }) }
     return
   }
   if (e.type === 'CELLS_UPDATED') {
@@ -540,7 +542,7 @@ function onSheetEvent(e) {
     if (e.type === 'STRUCTURE_CHANGED') {
       undoStack.value = []
       redoStack.value = []
-      ElMessage.info(`${e.actorName} changed the sheet layout`)
+      ElMessage.info(tr("{0} changed the sheet layout", [e.actorName]))
     }
     scheduleReload()
   }

@@ -1,30 +1,31 @@
 <template>
   <div class="login-page">
     <div class="login-card">
+      <div class="login-language"><LanguageSelect /></div>
       <div class="brand">
         <img src="/favicon.svg" alt="" />
         <div>
-          <h1>Factory Collaboration</h1>
-          <p>Warehouse · PMC · Purchase — one live source of truth</p>
+          <h1>{{ tr("Factory Collaboration") }}</h1>
+          <p>{{ tr("Warehouse · PMC · Purchase — one live source of truth") }}</p>
         </div>
       </div>
-      <el-alert v-if="$route.query.expired" type="warning" :closable="false" show-icon title="Your session expired, please sign in again." class="mb" />
+      <el-alert v-if="$route.query.expired" type="warning" :closable="false" show-icon :title="tr('Your session expired, please sign in again.')" class="mb" />
       <el-form @submit.prevent="submit" label-position="top">
-        <el-form-item label="Username">
+        <el-form-item :label="tr('Username')">
           <el-input v-model="username" autocomplete="username" autofocus />
         </el-form-item>
-        <el-form-item label="Password">
+        <el-form-item :label="tr('Password')">
           <el-input v-model="password" type="password" show-password autocomplete="current-password" />
         </el-form-item>
-        <el-button type="primary" native-type="submit" :loading="busy" class="full">Sign in</el-button>
+        <el-button type="primary" native-type="submit" :loading="busy" class="full">{{ tr("Sign in") }}</el-button>
       </el-form>
       <div class="demo">
-        <div class="demo-title">Demo accounts (password <code>password123</code>)</div>
+        <div class="demo-title">{{ tr("Demo accounts (password") }} <code>password123</code>)</div>
         <div class="demo-grid">
           <button v-for="d in demos" :key="d.u" type="button" @click="username = d.u; password = 'password123'">
-            <span class="dept-pill" :style="deptStyle(d.code)">{{ d.dept }}</span>
+            <span class="dept-pill" :style="deptStyle(d.code)">{{ tr(d.dept) }}</span>
             <span>{{ d.u }}</span>
-            <small>{{ d.role }}</small>
+            <small>{{ tr(d.role) }}</small>
           </button>
         </div>
       </div>
@@ -33,6 +34,9 @@
 </template>
 
 <script setup>
+import LanguageSelect from '../components/LanguageSelect.vue'
+import { tr } from '../i18n.js'
+
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../stores/auth.js'
@@ -45,13 +49,13 @@ const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const demos = [
-  { u: 'wh.manager', dept: 'Warehouse', code: 'WAREHOUSE', role: 'Manager' },
-  { u: 'wh.clerk', dept: 'Warehouse', code: 'WAREHOUSE', role: 'Member' },
-  { u: 'pmc.manager', dept: 'PMC', code: 'PMC', role: 'Manager' },
-  { u: 'pmc.planner', dept: 'PMC', code: 'PMC', role: 'Member' },
-  { u: 'pur.manager', dept: 'Purchase', code: 'PURCHASE', role: 'Manager' },
-  { u: 'pur.buyer', dept: 'Purchase', code: 'PURCHASE', role: 'Member' },
-  { u: 'admin', dept: 'IT', code: 'IT', role: 'Admin' }
+  { u: 'wh.manager', dept: "Warehouse", code: 'WAREHOUSE', role: "Manager" },
+  { u: 'wh.clerk', dept: "Warehouse", code: 'WAREHOUSE', role: "Member" },
+  { u: 'pmc.manager', dept: 'PMC', code: 'PMC', role: "Manager" },
+  { u: 'pmc.planner', dept: 'PMC', code: 'PMC', role: "Member" },
+  { u: 'pur.manager', dept: "Purchase", code: 'PURCHASE', role: "Manager" },
+  { u: 'pur.buyer', dept: "Purchase", code: 'PURCHASE', role: "Member" },
+  { u: 'admin', dept: 'IT', code: 'IT', role: "Admin" }
 ]
 
 async function submit() {
@@ -66,6 +70,7 @@ async function submit() {
 </script>
 
 <style scoped>
+.login-language { display: flex; justify-content: flex-end; margin-bottom: 16px; }
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--page); }
 .login-card { width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 10px 40px rgba(15, 30, 60, 0.08); }
 .brand { display: flex; gap: 14px; align-items: center; margin-bottom: 22px; }

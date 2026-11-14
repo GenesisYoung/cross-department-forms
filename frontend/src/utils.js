@@ -1,3 +1,5 @@
+import { locale, tr } from './i18n.js'
+
 const DEPT_HUES = { WAREHOUSE: 'teal', PMC: 'violet', PURCHASE: 'amber', IT: 'slate' }
 const EXTRA = ['rose', 'sky', 'lime', 'teal', 'violet', 'amber']
 
@@ -17,16 +19,16 @@ export function deptStyle(code) {
 export function timeAgo(iso) {
   if (!iso) return ''
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
-  if (s < 45) return 'just now'
-  if (s < 3600) return Math.round(s / 60) + ' min ago'
-  if (s < 86400) return Math.round(s / 3600) + ' h ago'
-  if (s < 86400 * 7) return Math.round(s / 86400) + ' d ago'
-  return new Date(iso).toLocaleDateString()
+  if (s < 45) return tr('just now')
+  if (s < 3600) return tr('{0} min ago', [Math.round(s / 60)])
+  if (s < 86400) return tr('{0} h ago', [Math.round(s / 3600)])
+  if (s < 86400 * 7) return tr('{0} d ago', [Math.round(s / 86400)])
+  return new Date(iso).toLocaleDateString(locale.value === 'zh-TW' ? 'zh-TW' : 'en-US')
 }
 export function formatTime(iso) {
-  return iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''
+  return iso ? new Date(iso).toLocaleString(locale.value === 'zh-TW' ? 'zh-TW' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''
 }
-export const show = (v) => (v === null || v === undefined || v === '' ? '(empty)' : v)
+export const show = (v) => (v === null || v === undefined || v === '' ? tr('(empty)') : v)
 export function deptDot(code) {
   return { background: `var(--hue-${deptHue(code)}-fg)` }
 }

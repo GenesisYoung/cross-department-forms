@@ -1,36 +1,36 @@
 <template>
-  <el-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" :title="template ? 'Edit template' : 'New template'" width="860px" top="5vh" @open="init">
+  <el-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" :title="template ? tr('Edit template') : tr('New template')" width="860px" top="5vh" @open="init">
     <el-form label-position="top">
       <div class="row">
-        <el-form-item label="Name" class="grow"><el-input v-model="form.name" maxlength="120" /></el-form-item>
-        <el-form-item v-if="auth.isAdmin" label="Department">
+        <el-form-item :label="tr('Name')" class="grow"><el-input v-model="form.name" maxlength="120" /></el-form-item>
+        <el-form-item v-if="auth.isAdmin" :label="tr('Department')">
           <el-select v-model="form.departmentId" style="width: 200px">
             <el-option v-for="d in auth.departments" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Rows"><el-input-number v-model="form.rowCount" :min="2" :max="5000" /></el-form-item>
+        <el-form-item :label="tr('Rows')"><el-input-number v-model="form.rowCount" :min="2" :max="5000" /></el-form-item>
       </div>
-      <el-form-item label="Description"><el-input v-model="form.description" maxlength="500" /></el-form-item>
+      <el-form-item :label="tr('Description')"><el-input v-model="form.description" maxlength="500" /></el-form-item>
     </el-form>
 
     <div class="cols-head">
-      <b>Columns</b>
-      <span class="muted">Header row is created from these names. Starter data rows from an existing template are kept.</span>
+      <b>{{ tr("Columns") }}</b>
+      <span class="muted">{{ tr("Header row is created from these names. Starter data rows from an existing template are kept.") }}</span>
     </div>
     <el-table :data="cols" size="small" max-height="380">
       <el-table-column label="#" width="44"><template #default="{ $index }">{{ colName($index) }}</template></el-table-column>
-      <el-table-column label="Column name" min-width="180">
-        <template #default="{ row }"><el-input v-model="row.title" size="small" placeholder="e.g. Material Deadline" /></template>
+      <el-table-column :label="tr('Column name')" min-width="180">
+        <template #default="{ row }"><el-input v-model="row.title" size="small" :placeholder="tr('e.g. Material Deadline')" /></template>
       </el-table-column>
-      <el-table-column label="Width" width="110">
+      <el-table-column :label="tr('Width')" width="110">
         <template #default="{ row }"><el-input-number v-model="row.width" size="small" :min="40" :max="600" :step="10" controls-position="right" style="width: 96px" /></template>
       </el-table-column>
-      <el-table-column label="Watched" width="80" align="center">
+      <el-table-column :label="tr('Watched')" width="80" align="center">
         <template #default="{ row }"><el-checkbox v-model="row.watched" /></template>
       </el-table-column>
-      <el-table-column label="Only editable by" min-width="200">
+      <el-table-column :label="tr('Only editable by')" min-width="200">
         <template #default="{ row }">
-          <el-select v-model="row.editDepartments" multiple size="small" placeholder="Anyone with edit access" style="width: 100%">
+          <el-select v-model="row.editDepartments" multiple size="small" :placeholder="tr('Anyone with edit access')" style="width: 100%">
             <el-option v-for="d in auth.departments" :key="d.code" :label="d.name" :value="d.code" />
           </el-select>
         </template>
@@ -42,16 +42,18 @@
         </template>
       </el-table-column>
     </el-table>
-    <el-button class="add" :icon="Plus" @click="cols.push(blank())">Add column</el-button>
+    <el-button class="add" :icon="Plus" @click="cols.push(blank())">{{ tr("Add column") }}</el-button>
 
     <template #footer>
-      <el-button @click="$emit('update:modelValue', false)">Cancel</el-button>
-      <el-button type="primary" :disabled="!form.name || !cols.length" :loading="saving" @click="save">Save template</el-button>
+      <el-button @click="$emit('update:modelValue', false)">{{ tr("Cancel") }}</el-button>
+      <el-button type="primary" :disabled="!form.name || !cols.length" :loading="saving" @click="save">{{ tr("Save template") }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Top, Delete } from '@element-plus/icons-vue'
@@ -111,7 +113,7 @@ async function save() {
   try {
     if (props.template) await api.put(`/templates/${props.template.id}`, body)
     else await api.post('/templates', body)
-    ElMessage.success('Template saved')
+    ElMessage.success(tr("Template saved"))
     emit('saved')
     emit('update:modelValue', false)
   } finally {

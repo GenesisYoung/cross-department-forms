@@ -3,20 +3,20 @@
     <el-aside :width="collapsed ? '64px' : '220px'" class="aside">
       <div class="logo" @click="$router.push('/')">
         <img src="/favicon.svg" alt="" />
-        <span v-if="!collapsed">Collab Dashboard</span>
+        <span v-if="!collapsed">{{ tr("Collab Dashboard") }}</span>
       </div>
       <el-menu :default-active="activeMenu" router :collapse="collapsed" class="menu">
-        <el-menu-item index="/"><el-icon><DataBoard /></el-icon><template #title>Dashboard</template></el-menu-item>
-        <el-menu-item index="/sheets"><el-icon><Grid /></el-icon><template #title>Sheets</template></el-menu-item>
-        <el-menu-item index="/templates"><el-icon><Files /></el-icon><template #title>Templates</template></el-menu-item>
+        <el-menu-item index="/"><el-icon><DataBoard /></el-icon><template #title>{{ tr("Dashboard") }}</template></el-menu-item>
+        <el-menu-item index="/sheets"><el-icon><Grid /></el-icon><template #title>{{ tr("Sheets") }}</template></el-menu-item>
+        <el-menu-item index="/templates"><el-icon><Files /></el-icon><template #title>{{ tr("Templates") }}</template></el-menu-item>
         <el-menu-item index="/notifications">
           <el-icon><Bell /></el-icon>
           <template #title>
-            Notifications
+            {{ tr("Notifications") }}
             <el-badge v-if="notes.unread" :value="notes.unread" :max="99" :type="notes.importantUnread ? 'danger' : 'primary'" class="menu-badge" />
           </template>
         </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin"><el-icon><UserFilled /></el-icon><template #title>Admin</template></el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/admin"><el-icon><UserFilled /></el-icon><template #title>{{ tr("Admin") }}</template></el-menu-item>
       </el-menu>
       <div class="collapse" @click="collapsed = !collapsed">
         <el-icon><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
@@ -26,7 +26,8 @@
       <el-header class="header" height="52px">
         <div class="crumb">{{ title }}</div>
         <div class="header-right">
-          <el-tooltip :content="live ? 'Real-time connection active' : 'Real-time connection lost — reconnecting'">
+          <LanguageSelect />
+          <el-tooltip :content="live ? tr('Real-time connection active') : tr('Real-time connection lost — reconnecting')">
             <span class="live" :class="{ on: live }"><i></i></span>
           </el-tooltip>
           <el-popover placement="bottom-end" :width="360" trigger="click" @show="loadLatest">
@@ -36,16 +37,16 @@
               </el-badge>
             </template>
             <div class="pop-head">
-              <b>Notifications</b>
-              <el-button link type="primary" size="small" :disabled="!notes.unread" @click="notes.markAllRead()">Mark all read</el-button>
+              <b>{{ tr("Notifications") }}</b>
+              <el-button link type="primary" size="small" :disabled="!notes.unread" @click="notes.markAllRead()">{{ tr("Mark all read") }}</el-button>
             </div>
-            <el-empty v-if="!latest.length" description="Nothing yet" :image-size="60" />
+            <el-empty v-if="!latest.length" :description="tr('Nothing yet')" :image-size="60" />
             <div v-for="n in latest" :key="n.id" class="pop-item" :class="{ unread: !n.readAt, important: n.severity === 'IMPORTANT' }" @click="openNotification(n)">
               <div class="pop-title">{{ n.title }}</div>
               <div class="pop-msg">{{ n.message.split('\n')[0] }}</div>
               <div class="pop-meta">{{ n.actorName }} · {{ timeAgo(n.createdAt) }}</div>
             </div>
-            <el-button link type="primary" class="see-all" @click="$router.push('/notifications')">See all</el-button>
+            <el-button link type="primary" class="see-all" @click="$router.push('/notifications')">{{ tr("See all") }}</el-button>
           </el-popover>
           <el-dropdown @command="onUser">
             <span class="user">
@@ -57,8 +58,8 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="password" :icon="Key">Change password</el-dropdown-item>
-                <el-dropdown-item command="logout" :icon="SwitchButton" divided>Sign out</el-dropdown-item>
+                <el-dropdown-item command="password" :icon="Key">{{ tr("Change password") }}</el-dropdown-item>
+                <el-dropdown-item command="logout" :icon="SwitchButton" divided>{{ tr("Sign out") }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -69,20 +70,23 @@
       </el-main>
     </el-container>
 
-    <el-dialog v-model="pwdOpen" title="Change password" width="400px">
+    <el-dialog v-model="pwdOpen" :title="tr('Change password')" width="400px">
       <el-form label-position="top">
-        <el-form-item label="Current password"><el-input v-model="pwd.currentPassword" type="password" show-password /></el-form-item>
-        <el-form-item label="New password (min 6 characters)"><el-input v-model="pwd.newPassword" type="password" show-password /></el-form-item>
+        <el-form-item :label="tr('Current password')"><el-input v-model="pwd.currentPassword" type="password" show-password /></el-form-item>
+        <el-form-item :label="tr('New password (min 6 characters)')"><el-input v-model="pwd.newPassword" type="password" show-password /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="pwdOpen = false">Cancel</el-button>
-        <el-button type="primary" :disabled="pwd.newPassword.length < 6" @click="changePassword">Change</el-button>
+        <el-button @click="pwdOpen = false">{{ tr("Cancel") }}</el-button>
+        <el-button type="primary" :disabled="pwd.newPassword.length < 6" @click="changePassword">{{ tr("Change") }}</el-button>
       </template>
     </el-dialog>
   </el-container>
 </template>
 
 <script setup>
+import LanguageSelect from '../components/LanguageSelect.vue'
+import { tr } from '../i18n.js'
+
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -108,13 +112,13 @@ const stop = onConnectionChange((v) => { live.value = v; if (v) notes.refresh() 
 onBeforeUnmount(stop)
 
 const activeMenu = computed(() => (route.path.startsWith('/sheets') ? '/sheets' : route.path))
-const title = computed(() => ({ dashboard: 'Dashboard', sheets: 'Sheets', sheet: 'Sheet', templates: 'Templates', notifications: 'Notifications', admin: 'Administration' }[route.name] ?? ''))
+const title = computed(() => ({ dashboard: tr("Dashboard"), sheets: tr("Sheets"), sheet: tr("Sheet"), templates: tr("Templates"), notifications: tr("Notifications"), admin: tr("Administration") }[route.name] ?? ''))
 const initials = computed(() => {
   // first letters of the name, ignoring any "(role)" suffix, e.g. "Peter (PMC Planner)" -> "P"
   const name = (auth.user?.displayName ?? '?').replace(/\(.*?\)/g, '').trim() || '?'
   return name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 })
-const roleLabel = computed(() => ({ ADMIN: 'Admin', MANAGER: 'Manager', MEMBER: 'Member' }[auth.user?.role]))
+const roleLabel = computed(() => ({ ADMIN: tr("Admin"), MANAGER: tr("Manager"), MEMBER: tr("Member") }[auth.user?.role]))
 
 async function loadLatest() {
   latest.value = await api.get('/notifications', { params: { size: 8 } })
@@ -136,7 +140,7 @@ function onUser(cmd) {
 async function changePassword() {
   await api.post('/auth/password', pwd)
   pwdOpen.value = false
-  ElMessage.success('Password changed')
+  ElMessage.success(tr("Password changed"))
 }
 </script>
 

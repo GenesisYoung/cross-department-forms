@@ -1,3 +1,4 @@
+import { tr } from './i18n.js'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
@@ -27,7 +28,7 @@ api.interceptors.response.use(
       setToken(null)
       if (!location.pathname.startsWith('/login')) location.href = '/login?expired=1'
     } else if (!err.config.silent) {
-      ElMessage.error(message)
+      ElMessage.error(tr(message))
     }
     return Promise.reject(Object.assign(new Error(message), { status }))
   }

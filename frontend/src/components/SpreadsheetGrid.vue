@@ -20,8 +20,8 @@
             @mousedown.prevent="onColHeaderDown($event, c - 1)"
           >
             <span class="letter">{{ colName(c - 1) }}</span>
-            <el-icon v-if="columns[c - 1]?.watched" class="col-flag watch" title="Watched: changes notify every department"><Bell /></el-icon>
-            <el-tooltip v-if="columns[c - 1]?.editDepartments?.length" :content="'Editable by: ' + columns[c - 1].editDepartments.join(', ')" placement="top">
+            <el-icon v-if="columns[c - 1]?.watched" class="col-flag watch" :title="tr('Watched: changes notify every department')"><Bell /></el-icon>
+            <el-tooltip v-if="columns[c - 1]?.editDepartments?.length" :content="tr('Editable by: ') + columns[c - 1].editDepartments.join(', ')" placement="top">
               <el-icon class="col-flag lock"><Lock /></el-icon>
             </el-tooltip>
             <span class="resizer" @mousedown.stop.prevent="startResize($event, c - 1)"></span>
@@ -80,6 +80,8 @@
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { colName, shiftFormula } from '../formula/engine.js'
@@ -190,7 +192,7 @@ function cellAttrs(r, c) {
   if (props.canEdit(r, c)) cls.push('ro')
   if (flash) cls.push('flash')
   if (r >= range.value.r1 && r <= range.value.r2 && c >= range.value.c1 && c <= range.value.c2 && !(r === sel.r && c === sel.c)) cls.push('in-sel')
-  return { class: cls, title: flash ? `Changed just now by ${flash.by}` : (d.text.length > 18 ? d.text : null) }
+  return { class: cls, title: flash ? tr("Changed just now by {0}", [flash.by]) : (d.text.length > 18 ? d.text : null) }
 }
 function cellStyle(r, c) {
   const s = props.getStyle(r, c)
@@ -283,7 +285,7 @@ function focusInput() {
 function startEdit(initial) {
   const reason = props.canEdit(sel.r, sel.c)
   if (reason) {
-    ElMessage.warning(`Read-only: ${reason}`)
+    ElMessage.warning(tr("Read-only: {0}", [reason]))
     return false
   }
   editing.value = true
@@ -314,7 +316,7 @@ function onInput() {
 function onCompositionStart() {
   composing = true
   if (!editing.value) {
-    if (props.canEdit(sel.r, sel.c)) { ElMessage.warning('Read-only cell'); return }
+    if (props.canEdit(sel.r, sel.c)) { ElMessage.warning(tr("Read-only cell")); return }
     editing.value = true
     editOrigin.value = 'type'
   }
@@ -371,7 +373,7 @@ function onKeyDown(e) {
       e.preventDefault(); setSel(sel.r, sel.c + (e.shiftKey ? -1 : 1)); return
     case 'F2':
       e.preventDefault(); startEdit(); return
-    case 'Delete': case 'Backspace':
+    case tr("Delete"): case 'Backspace':
       e.preventDefault(); clearSelection(); return
     case 'PageDown':
       e.preventDefault(); setSel(sel.r + Math.floor(viewH.value / ROW_H) - 2, sel.c, e.shiftKey); return
@@ -405,7 +407,7 @@ function clearSelection() {
     if (props.canEdit(r, c)) { blocked++; continue }
     edits.push({ r, c, v: '', s: props.getStyle(r, c) })
   }
-  if (blocked) ElMessage.warning(`${blocked} read-only cell(s) were skipped`)
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) were skipped", [blocked]))
   if (edits.length) emit('edit', edits)
 }
 
@@ -476,7 +478,7 @@ function onPaste(e) {
     const rows = parseTsv(text.replace(/\n$/, ''))
     rows.forEach((line, i) => line.forEach((v, j) => push(sel.r + i, sel.c + j, v, props.getStyle(sel.r + i, sel.c + j))))
   }
-  if (blocked) ElMessage.warning(`${blocked} read-only cell(s) were skipped`)
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) were skipped", [blocked]))
   if (edits.length) {
     emit('edit', edits)
     const maxR = Math.max(...edits.map((x) => x.r)), maxC = Math.max(...edits.map((x) => x.c))
@@ -506,18 +508,18 @@ const menuItems = computed(() => {
   const { r1, r2, c1, c2 } = range.value
   const nr = r2 - r1 + 1, nc = c2 - c1 + 1
   return [
-    { key: 'history', label: `History of ${colName(sel.c)}${sel.r + 1}` },
-    { key: 'column', label: `Column ${colName(sel.c)} settings…`, disabled: !props.canStructure.cols },
+    { key: 'history', label: tr("History of {0}{1}", [colName(sel.c), sel.r + 1]) },
+    { key: 'column', label: tr("Column {0} settings…", [colName(sel.c)]), disabled: !props.canStructure.cols },
     { key: 'd1', divider: true },
-    { key: 'insert-row-above', label: `Insert ${nr} row(s) above`, disabled: !props.canStructure.rows },
-    { key: 'insert-row-below', label: `Insert ${nr} row(s) below`, disabled: !props.canStructure.rows },
-    { key: 'delete-rows', label: `Delete row(s) ${r1 + 1}–${r2 + 1}`, disabled: !props.canStructure.rows },
+    { key: 'insert-row-above', label: tr("Insert {0} row(s) above", [nr]), disabled: !props.canStructure.rows },
+    { key: 'insert-row-below', label: tr("Insert {0} row(s) below", [nr]), disabled: !props.canStructure.rows },
+    { key: 'delete-rows', label: tr("Delete row(s) {0}–{1}", [r1 + 1, r2 + 1]), disabled: !props.canStructure.rows },
     { key: 'd2', divider: true },
-    { key: 'insert-col-left', label: `Insert ${nc} column(s) left`, disabled: !props.canStructure.cols },
-    { key: 'insert-col-right', label: `Insert ${nc} column(s) right`, disabled: !props.canStructure.cols },
-    { key: 'delete-cols', label: `Delete column(s) ${colName(c1)}–${colName(c2)}`, disabled: !props.canStructure.cols },
+    { key: 'insert-col-left', label: tr("Insert {0} column(s) left", [nc]), disabled: !props.canStructure.cols },
+    { key: 'insert-col-right', label: tr("Insert {0} column(s) right", [nc]), disabled: !props.canStructure.cols },
+    { key: 'delete-cols', label: tr("Delete column(s) {0}–{1}", [colName(c1), colName(c2)]), disabled: !props.canStructure.cols },
     { key: 'd3', divider: true },
-    { key: 'clear', label: 'Clear contents' }
+    { key: 'clear', label: tr("Clear contents") }
   ]
 })
 function onContextMenu(e) {

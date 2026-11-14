@@ -3,42 +3,42 @@
     <template v-if="data">
       <div class="greeting">
         <div>
-          <h2>Good {{ partOfDay }}, {{ data.me.displayName.split(' ')[0] }}</h2>
-          <p>Live view of what {{ data.me.department.name }} shares and depends on. Updates arrive instantly — no meeting needed.</p>
+          <h2>{{ tr('Good {0}, {1}', [tr(partOfDay), data.me.displayName.split(' ')[0]]) }}</h2>
+          <p>{{ tr('Live view of what {0} shares and depends on. Updates arrive instantly — no meeting needed.', [data.me.department.name]) }}</p>
         </div>
         <div class="actions">
-          <el-button v-if="auth.canCreate" type="primary" :icon="Plus" @click="$router.push({ name: 'sheets', query: { new: 1 } })">New sheet</el-button>
-          <el-button v-if="auth.canCreate" :icon="Upload" @click="$router.push({ name: 'sheets', query: { import: 1 } })">Import Excel</el-button>
+          <el-button v-if="auth.canCreate" type="primary" :icon="Plus" @click="$router.push({ name: 'sheets', query: { new: 1 } })">{{ tr("New sheet") }}</el-button>
+          <el-button v-if="auth.canCreate" :icon="Upload" @click="$router.push({ name: 'sheets', query: { import: 1 } })">{{ tr("Import Excel") }}</el-button>
         </div>
       </div>
 
       <div class="kpis">
         <div class="kpi" :class="{ alert: data.notifications.importantUnread }">
-          <div class="kpi-label">Key changes to acknowledge</div>
+          <div class="kpi-label">{{ tr("Key changes to acknowledge") }}</div>
           <div class="kpi-value">{{ data.notifications.importantUnread }}</div>
-          <div class="kpi-foot">{{ data.notifications.unread }} unread notifications in total</div>
+          <div class="kpi-foot">{{ data.notifications.unread }} {{ tr("unread notifications in total") }}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-label">Edits in the last 24 h</div>
+          <div class="kpi-label">{{ tr("Edits in the last 24 h") }}</div>
           <div class="kpi-value">{{ totalChanges }}</div>
-          <div class="kpi-foot">across {{ sheetCount }} sheets you can see</div>
+          <div class="kpi-foot">{{ tr("across") }} {{ sheetCount }} {{ tr("sheets you can see") }}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-label">Shared with my department</div>
+          <div class="kpi-label">{{ tr("Shared with my department") }}</div>
           <div class="kpi-value">{{ sharedWithMe }}</div>
-          <div class="kpi-foot">sheets owned by other departments</div>
+          <div class="kpi-foot">{{ tr("sheets owned by other departments") }}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-label">Watched-column changes</div>
+          <div class="kpi-label">{{ tr("Watched-column changes") }}</div>
           <div class="kpi-value">{{ data.watchedChanges.length }}</div>
-          <div class="kpi-foot">most recent deadline / qty / status moves</div>
+          <div class="kpi-foot">{{ tr("most recent deadline / qty / status moves") }}</div>
         </div>
       </div>
 
       <section v-if="data.importantUnread.length" class="panel attention">
         <div class="panel-head">
-          <h3><el-icon><WarningFilled /></el-icon> Needs your acknowledgement</h3>
-          <span class="muted">The editor can see who has acknowledged each change</span>
+          <h3><el-icon><WarningFilled /></el-icon> {{ tr("Needs your acknowledgement") }}</h3>
+          <span class="muted">{{ tr("The editor can see who has acknowledged each change") }}</span>
         </div>
         <div v-for="n in data.importantUnread" :key="n.id" class="attn-item">
           <div class="attn-body">
@@ -47,8 +47,8 @@
             <div class="muted">{{ n.actorName }} · {{ n.actorDepartment }} · {{ timeAgo(n.createdAt) }}</div>
           </div>
           <div class="attn-actions">
-            <el-button size="small" @click="$router.push({ name: 'sheet', params: { id: n.sheetId } })">Open</el-button>
-            <el-button size="small" type="warning" @click="ack(n)">Acknowledge</el-button>
+            <el-button size="small" @click="$router.push({ name: 'sheet', params: { id: n.sheetId } })">{{ tr("Open") }}</el-button>
+            <el-button size="small" type="warning" @click="ack(n)">{{ tr("Acknowledge") }}</el-button>
           </div>
         </div>
       </section>
@@ -59,12 +59,12 @@
             <div class="panel-head">
               <h3>
                 <span class="dept-pill" :style="deptStyle(panel.department.code)">{{ panel.department.name }}</span>
-                <span v-if="panel.department.id === data.me.department.id" class="muted">your department</span>
+                <span v-if="panel.department.id === data.me.department.id" class="muted">{{ tr("your department") }}</span>
               </h3>
-              <span class="muted">{{ panel.changesLast24h }} edits / 24 h</span>
+              <span class="muted">{{ panel.changesLast24h }} {{ tr("edits / 24 h") }}</span>
             </div>
             <p v-if="panel.department.description" class="dept-desc">{{ panel.department.description }}</p>
-            <el-empty v-if="!panel.sheets.length" :image-size="50" description="No sheets yet" />
+            <el-empty v-if="!panel.sheets.length" :image-size="50" :description="tr('No sheets yet')" />
             <div class="sheet-list">
               <router-link v-for="s in panel.sheets" :key="s.id" :to="{ name: 'sheet', params: { id: s.id } }" class="sheet-card">
                 <div class="sheet-top">
@@ -74,9 +74,9 @@
                 </div>
                 <div class="sheet-desc">{{ s.description || '—' }}</div>
                 <div class="sheet-meta">
-                  <span>Updated {{ timeAgo(s.updatedAt) }}</span>
-                  <span v-if="s.changesLast24h" class="hot">{{ s.changesLast24h }} edits today</span>
-                  <span v-if="s.subscribed"><el-icon><BellFilled /></el-icon> following</span>
+                  <span>{{ tr("Updated") }} {{ timeAgo(s.updatedAt) }}</span>
+                  <span v-if="s.changesLast24h" class="hot">{{ s.changesLast24h }} {{ tr("edits today") }}</span>
+                  <span v-if="s.subscribed"><el-icon><BellFilled /></el-icon> {{ tr("following") }}</span>
                 </div>
               </router-link>
             </div>
@@ -85,8 +85,8 @@
 
         <div class="col-side">
           <section class="panel">
-            <div class="panel-head"><h3>Key changes</h3><span class="muted">watched columns</span></div>
-            <el-empty v-if="!data.watchedChanges.length" :image-size="50" description="No key changes yet" />
+            <div class="panel-head"><h3>{{ tr("Key changes") }}</h3><span class="muted">{{ tr("watched columns") }}</span></div>
+            <el-empty v-if="!data.watchedChanges.length" :image-size="50" :description="tr('No key changes yet')" />
             <div v-for="ch in data.watchedChanges" :key="ch.id" class="feed-item key" @click="openChange(ch)">
               <div class="feed-top">
                 <span class="dept-dot" :style="deptDot(ch.departmentCode)"></span>
@@ -96,15 +96,15 @@
               <div class="feed-where">{{ ch.sheetName }} · {{ ch.rowLabel }}</div>
               <div class="feed-diff">{{ ch.columnLabel }}: <s>{{ show(ch.oldValue) }}</s> → <b>{{ show(ch.newValue) }}</b></div>
               <div v-if="ch.acknowledgements.length" class="acks">
-                {{ ackCount(ch) }} / {{ ch.acknowledgements.length }} acknowledged
+                {{ ackCount(ch) }} / {{ ch.acknowledgements.length }} {{ tr("acknowledged") }}
                 <el-progress :percentage="Math.round(100 * ackCount(ch) / ch.acknowledgements.length)" :show-text="false" :stroke-width="4" />
               </div>
             </div>
           </section>
 
           <section class="panel">
-            <div class="panel-head"><h3>Recent activity</h3><span class="muted">all shared sheets</span></div>
-            <el-empty v-if="!data.recentChanges.length" :image-size="50" description="No activity yet" />
+            <div class="panel-head"><h3>{{ tr("Recent activity") }}</h3><span class="muted">{{ tr("all shared sheets") }}</span></div>
+            <el-empty v-if="!data.recentChanges.length" :image-size="50" :description="tr('No activity yet')" />
             <div v-for="ch in data.recentChanges" :key="ch.id" class="feed-item" @click="openChange(ch)">
               <div class="feed-top">
                 <span class="dept-dot" :style="deptDot(ch.departmentCode)"></span>
@@ -122,6 +122,8 @@
 </template>
 
 <script setup>
+import { tr } from '../i18n.js'
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Upload } from '@element-plus/icons-vue'
@@ -153,7 +155,7 @@ const allSheets = computed(() => data.value.departments.flatMap((p) => p.sheets)
 const sheetCount = computed(() => allSheets.value.length)
 const totalChanges = computed(() => allSheets.value.reduce((s, x) => s + x.changesLast24h, 0))
 const sharedWithMe = computed(() => allSheets.value.filter((s) => s.ownerDepartment.id !== data.value.me.department.id).length)
-const accessLabel = (a) => ({ OWNER: 'Owner', EDIT: 'Edit', VIEW: 'View' }[a])
+const accessLabel = (a) => ({ OWNER: tr("Owner"), EDIT: tr("Edit"), VIEW: tr("View") }[a])
 const accessType = (a) => ({ OWNER: 'success', EDIT: 'primary', VIEW: 'info' }[a])
 const ackCount = (ch) => ch.acknowledgements.filter((a) => a.acknowledgedAt).length
 
