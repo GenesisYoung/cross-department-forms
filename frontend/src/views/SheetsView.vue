@@ -18,7 +18,7 @@
     <el-table :data="filtered" v-loading="loading" class="table" @row-click="(row) => $router.push({ name: 'sheet', params: { id: row.id } })" row-class-name="clickable">
       <el-table-column :label="tr('Name')" min-width="240">
         <template #default="{ row }">
-          <div class="name">{{ row.name }}</div>
+          <div class="name">{{ row.name }}<span v-if="row.tabCount > 1" class="tabs-badge">{{ tr("{0} tabs", [row.tabCount]) }}</span></div>
           <div class="desc">{{ row.description }}</div>
         </template>
       </el-table-column>
@@ -71,7 +71,7 @@
           <el-upload drag :auto-upload="false" :limit="1" accept=".xlsx,.xls,.xlsm,.csv" :on-change="(f) => (file = f.raw)" :on-remove="() => (file = null)" class="up">
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">{{ tr("Drop a file here or") }} <em>{{ tr("click to choose") }}</em></div>
-            <template #tip><div class="tip">{{ tr("Each worksheet becomes its own sheet. Formulas, bold text, fills and column widths are kept. Max 20 MB.") }}</div></template>
+            <template #tip><div class="tip">{{ tr("Worksheets stay together in one sheet, as tabs you can switch between. Formulas, bold text, fills and column widths are kept. Max 20 MB.") }}</div></template>
           </el-upload>
         </el-form-item>
         <el-form-item :label="tr('Sheet name (optional)')"><el-input v-model="importName" :placeholder="tr('Defaults to the file name')" /></el-form-item>
@@ -154,9 +154,9 @@ async function doImport() {
   try {
     const created = await api.post('/sheets/import', fd, { timeout: 120000 })
     importOpen.value = false
-    ElMessage.success(tr("Imported {0} sheet(s)", [created.length]))
-    if (created.length === 1) router.push({ name: 'sheet', params: { id: created[0].id } })
-    else load()
+    const book = created[0]
+    ElMessage.success(book.tabCount > 1 ? tr("Imported \"{0}\" with {1} tabs", [book.name, book.tabCount]) : tr("Imported {0} sheet(s)", [created.length]))
+    router.push({ name: 'sheet', params: { id: book.id } })
   } finally { busy.value = false }
 }
 
@@ -175,6 +175,7 @@ if (route.query.import) importOpen.value = true
 .table { border-radius: 12px; border: 1px solid var(--border); }
 .table :deep(.clickable) { cursor: pointer; }
 .name { font-weight: 600; color: var(--text-1); }
+.tabs-badge { margin-left: 8px; font-size: 11px; font-weight: 500; color: var(--text-2); padding: 1px 6px; border-radius: 4px; background: var(--hover); }
 .desc { font-size: 12px; color: var(--text-2); }
 .share { display: inline-block; margin: 0 6px 2px 0; font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--hover); }
 .share small { color: var(--text-3); }

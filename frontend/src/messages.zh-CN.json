@@ -87,7 +87,7 @@
   "File (.xlsx, .xls, .csv)": "文件（.xlsx、.xls、.csv）",
   "Drop a file here or": "将文件拖到此处，或",
   "click to choose": "点击选择",
-  "Each worksheet becomes its own sheet. Formulas, bold text, fills and column widths are kept. Max 20 MB.": "每个工作表将创建为独立表格，保留公式、粗体、填充颜色与列宽。文件上限 20 MB。",
+  "Worksheets stay together in one sheet, as tabs you can switch between. Formulas, bold text, fills and column widths are kept. Max 20 MB.": "所有工作表保留在同一份表格中，可通过标签页切换。保留公式、粗体、填充颜色与列宽。文件上限 20 MB。",
   "Sheet name (optional)": "表格名称（选填）",
   "Defaults to the file name": "默认使用文件名",
   "My department": "本部门",
@@ -273,5 +273,8 @@
   "{0} h ago": "{0} 小时前",
   "{0} d ago": "{0} 天前",
   "Language": "语言",
-  " template": " 模板"
+  " template": " 模板",
+  "{0} tabs": "{0} 个标签页",
+  "Imported \"{0}\" with {1} tabs": "已导入“{0}”，共 {1} 个标签页",
+  "Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.": "确定删除“{0}”的全部 {1} 个标签页及其变更历史？此操作无法撤销。"
 }

@@ -111,6 +111,21 @@
         @action="onGridAction"
       />
 
+      <!-- workbook tabs (one per worksheet of an imported Excel file) -->
+      <div v-if="sheet.tabs?.length > 1" class="tab-bar" role="tablist">
+        <button
+          v-for="t in sheet.tabs"
+          :key="t.id"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ active: t.id === sheet.id }"
+          :aria-selected="t.id === sheet.id"
+          :title="t.name"
+          @click="switchTab(t.id)"
+        >{{ t.name }}</button>
+      </div>
+
       <div class="status-bar">
         <span v-if="stats.count > 1">{{ tr("Count:") }} {{ stats.count }}</span>
         <span v-if="stats.nums">{{ tr("Sum:") }} {{ fmt(stats.sum) }}</span>
@@ -487,11 +502,18 @@ async function onMore(cmd) {
     settingsOpen.value = true
   }
   if (cmd === 'delete') {
-    await ElMessageBox.confirm(tr("Delete \"{0}\" and its whole change history? This cannot be undone.", [s.name]), tr("Delete sheet"), { type: 'warning', confirmButtonText: tr("Delete") })
+    const msg = s.tabs?.length > 1
+      ? tr("Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.", [s.name, s.tabs.length])
+      : tr("Delete \"{0}\" and its whole change history? This cannot be undone.", [s.name])
+    await ElMessageBox.confirm(msg, tr("Delete sheet"), { type: 'warning', confirmButtonText: tr("Delete") })
     await api.delete(`/sheets/${s.id}`)
     ElMessage.success(tr("Sheet deleted"))
     router.push({ name: 'sheets' })
   }
+}
+function switchTab(id) {
+  if (id === sheet.value?.id) return
+  router.push({ name: 'sheet', params: { id: String(id) } })
 }
 async function saveSettings() {
   const detail = await api.put(`/sheets/${sheet.value.id}`, settings)
@@ -601,6 +623,10 @@ onBeforeUnmount(() => {
 .formula-bar .fx { font-style: italic; color: var(--text-2); font-weight: 600; }
 .fx-input { flex: 1; }
 .fx-input :deep(input) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tab-bar { display: flex; gap: 2px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--grid-head); overflow-x: auto; scrollbar-width: thin; }
+.tab-bar .tab { flex: none; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 14px; font: inherit; font-size: 12px; color: var(--text-2); background: transparent; border: 1px solid transparent; border-top: none; border-radius: 0 0 6px 6px; cursor: pointer; }
+.tab-bar .tab:hover { background: var(--hover); color: var(--text-1); }
+.tab-bar .tab.active { background: var(--panel); color: var(--text-1); font-weight: 600; border-color: var(--border); box-shadow: inset 0 2px 0 var(--el-color-primary); }
 .status-bar { display: flex; gap: 16px; padding: 4px 16px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--border); background: var(--grid-head); }
 .status-bar .remote { color: var(--warn-text); }
 .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-right: 4px; }

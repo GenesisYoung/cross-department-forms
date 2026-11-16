@@ -54,6 +54,25 @@ public class Sheet {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
+    /** Id of the first tab when this sheet is one tab of a multi-sheet workbook; null for standalone sheets. */
+    @Column(name = "workbook_id")
+    private Long workbookId;
+
+    @Column(name = "tab_name", length = 100)
+    private String tabName;
+
+    @Column(name = "tab_index", nullable = false)
+    private int tabIndex;
+
+    public boolean inWorkbook() {
+        return workbookId != null;
+    }
+
+    /** Name used in notifications and history: "Workbook › Tab" for workbook tabs. */
+    public String label() {
+        return tabName == null ? name : name + " › " + tabName;
+    }
+
     public void touch() {
         version++;
         updatedAt = Instant.now();

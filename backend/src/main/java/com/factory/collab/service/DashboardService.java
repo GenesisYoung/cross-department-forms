@@ -40,7 +40,7 @@ public class DashboardService {
             panels.add(new DepartmentPanel(DepartmentDto.of(d), list, list.stream().mapToLong(SheetSummary::changesLast24h).sum()));
         }
 
-        Map<Long, String> names = sheets.stream().collect(Collectors.toMap(SheetSummary::id, SheetSummary::name));
+        Map<Long, String> names = sheetService.visibleLabels(user); // includes every workbook tab
         List<ChangeDto> recent = names.isEmpty() ? List.of()
                 : views.changes(changeRepository.findBySheetIdInOrderByChangedAtDescIdDesc(names.keySet(), PageRequest.of(0, 30)), names, false);
         List<ChangeDto> watched = names.isEmpty() ? List.of()

@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface SheetRepository extends JpaRepository<Sheet, Long> {
     List<Sheet> findAllByOrderByUpdatedAtDesc();
 
+    List<Sheet> findByWorkbookIdOrderByTabIndexAsc(Long workbookId);
+
     /** Serialises writers on one sheet so version numbers and row shifts stay consistent. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Sheet s where s.id = :id")

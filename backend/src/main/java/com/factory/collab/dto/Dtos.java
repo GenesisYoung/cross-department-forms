@@ -81,13 +81,18 @@ public final class Dtos {
     public record SheetSummary(Long id, String name, String description, DepartmentDto ownerDepartment,
             int rowCount, int colCount, long version, Instant updatedAt,
             AccessLevel access, boolean subscribed, List<PermissionDto> sharedWith,
-            long changesLast24h) {
+            long changesLast24h, int tabCount) {
+    }
+
+    /** One tab of a multi-sheet workbook. */
+    public record TabDto(Long id, String name, int index) {
     }
 
     public record SheetDetail(Long id, String name, String description, DepartmentDto ownerDepartment,
             int rowCount, int colCount, int headerRows, long version, Instant updatedAt,
             AccessLevel access, boolean subscribed,
-            List<ColumnDto> columns, List<CellDto> cells, List<PermissionDto> sharedWith) {
+            List<ColumnDto> columns, List<CellDto> cells, List<PermissionDto> sharedWith,
+            Long workbookId, String tabName, List<TabDto> tabs) {
     }
 
     public record CreateSheetRequest(@NotBlank @Size(max = 160) String name,

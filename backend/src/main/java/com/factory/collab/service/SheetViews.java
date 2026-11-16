@@ -32,20 +32,38 @@ public class SheetViews {
     }
 
     public SheetSummary summary(Sheet s, AccessLevel level, AuthUser user) {
+        return summary(s, List.of(s), level, user);
+    }
+
+    /** Summary of a sheet, or of a whole workbook when {@code tabs} holds all of its tabs (first tab first). */
+    public SheetSummary summary(Sheet s, List<Sheet> tabs, AccessLevel level, AuthUser user) {
         boolean subscribed = subscriptionRepository.findBySheetIdAndUserId(s.getId(), user.id()).isPresent();
-        long recent = changeRepository.countSince(s.getId(), Instant.now().minus(24, ChronoUnit.HOURS));
+        Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
+        long recent = 0;
+        long version = 0;
+        Instant updatedAt = s.getUpdatedAt();
+        for (Sheet t : tabs) {
+            recent += changeRepository.countSince(t.getId(), since);
+            version += t.getVersion();
+            if (t.getUpdatedAt().isAfter(updatedAt)) updatedAt = t.getUpdatedAt();
+        }
         return new SheetSummary(s.getId(), s.getName(), s.getDescription(), DepartmentDto.of(s.getOwnerDepartment()),
-                s.getRowCount(), s.getColCount(), s.getVersion(), s.getUpdatedAt(), level, subscribed,
-                permissions(s.getId()), recent);
+                s.getRowCount(), s.getColCount(), version, updatedAt, level, subscribed,
+                permissions(s.getId()), recent, tabs.size());
     }
 
     public SheetDetail detail(Sheet s, AccessLevel level, AuthUser user) {
+        return detail(s, List.of(s), level, user);
+    }
+
+    public SheetDetail detail(Sheet s, List<Sheet> tabs, AccessLevel level, AuthUser user) {
         boolean subscribed = subscriptionRepository.findBySheetIdAndUserId(s.getId(), user.id()).isPresent();
         List<ColumnDto> cols = columnRepository.findBySheetIdOrderByColIndex(s.getId()).stream().map(ColumnDto::of).toList();
         List<CellDto> cells = cellRepository.findBySheetId(s.getId()).stream().map(CellDto::of).toList();
         return new SheetDetail(s.getId(), s.getName(), s.getDescription(), DepartmentDto.of(s.getOwnerDepartment()),
                 s.getRowCount(), s.getColCount(), s.getHeaderRows(), s.getVersion(), s.getUpdatedAt(), level, subscribed,
-                cols, cells, permissions(s.getId()));
+                cols, cells, permissions(s.getId()), s.getWorkbookId(), s.getTabName(),
+                s.inWorkbook() ? tabs.stream().map(t -> new TabDto(t.getId(), t.getTabName(), t.getTabIndex())).toList() : List.of());
     }
 
     /** Change records, with acknowledgement status attached to watched changes when requested. */

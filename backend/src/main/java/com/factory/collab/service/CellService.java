@@ -142,7 +142,7 @@ public class CellService {
         sheet.touch();
         sheetRepository.save(sheet);
 
-        events.publish(new SheetEvent(SheetEvent.Type.CELLS_UPDATED, sheetId, sheet.getName(), sheet.getVersion(), batchId,
+        events.publish(new SheetEvent(SheetEvent.Type.CELLS_UPDATED, sheetId, sheet.label(), sheet.getVersion(), batchId,
                 req.clientId(), user.id(), user.displayName(), user.departmentCode(), user.departmentName(),
                 payload, null, null, now));
         return new UpdateCellsResponse(sheet.getVersion(), applied.size());

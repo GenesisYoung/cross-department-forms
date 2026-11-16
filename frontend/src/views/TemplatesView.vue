@@ -23,7 +23,7 @@
     <div
       class="cards"
       v-loading="loading"
-      v-if="!loading && !templates.length && !templates.length < 1"
+      v-if="templates.length && templates.length > 0"
     >
       <div v-for="t in templates" :key="t.id" class="card">
         <div class="card-head">

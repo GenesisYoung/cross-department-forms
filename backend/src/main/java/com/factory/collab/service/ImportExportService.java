@@ -49,6 +49,7 @@ public class ImportExportService {
 
     // ------------------------------------------------------------------ import
 
+    /** Imports a file. A multi-sheet Excel workbook becomes one workbook whose worksheets are tabs. */
     @Transactional
     public List<SheetSummary> importFile(MultipartFile file, String name, Long departmentId, AuthUser user) throws IOException {
         sheetService.requireCreator(user);
@@ -59,15 +60,16 @@ public class ImportExportService {
 
         Map<String, TemplateDefinition> parsed = new LinkedHashMap<>();
         if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
-            parsed.put(base, parseCsv(file.getInputStream()));
+            parsed.put(null, parseCsv(file.getInputStream()));
         } else if (lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".xlsm")) {
             try (InputStream input = file.getInputStream(); Workbook wb = workbookReader.open(input)) {
                 for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                     Sheet ws = wb.getSheetAt(i);
                     TemplateDefinition def = parseWorksheet(ws);
                     if (def.cells().isEmpty()) continue;
-                    String sheetName = wb.getNumberOfSheets() == 1 ? base : base + " - " + ws.getSheetName();
-                    parsed.put(SheetLabels.truncate(sheetName, 160), def);
+                    String tab = SheetLabels.truncate(ws.getSheetName(), 100);
+                    while (parsed.containsKey(tab)) tab = SheetLabels.truncate(tab, 96) + " (" + (parsed.size() + 1) + ")";
+                    parsed.put(tab, def);
                 }
             } catch (org.apache.poi.EmptyFileException | org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException e) {
                 throw ApiException.badRequest("The file is empty or not a valid Excel workbook");
@@ -77,15 +79,24 @@ public class ImportExportService {
         }
         if (parsed.isEmpty()) throw ApiException.badRequest("No data found in the file");
 
-        List<SheetSummary> out = new ArrayList<>();
+        String sheetName = SheetLabels.truncate(base, 160);
+        boolean workbook = parsed.size() > 1;
+        List<com.factory.collab.domain.Sheet> tabs = new ArrayList<>();
         for (var entry : parsed.entrySet()) {
-            var sheet = sheetService.createFromDefinition(entry.getKey(), "Imported from " + filename, dept, null, entry.getValue(), user);
-            events.publish(new SheetEvent(SheetEvent.Type.SHEET_CREATED, sheet.getId(), sheet.getName(), 0,
-                    UUID.randomUUID().toString(), null, user.id(), user.displayName(), user.departmentCode(),
-                    user.departmentName(), List.of(), null, null, Instant.now()));
-            out.add(views.summary(sheet, permissions.levelFor(user, sheet), user));
+            var sheet = sheetService.createFromDefinition(sheetName, "Imported from " + filename, dept, null, entry.getValue(), user);
+            if (workbook) {
+                sheet.setWorkbookId(tabs.isEmpty() ? sheet.getId() : tabs.get(0).getId());
+                sheet.setTabName(entry.getKey());
+                sheet.setTabIndex(tabs.size());
+            }
+            tabs.add(sheet);
         }
-        return out;
+        // Announce the import once, under the first tab (that is where the workbook is listed).
+        var first = tabs.get(0);
+        events.publish(new SheetEvent(SheetEvent.Type.SHEET_CREATED, first.getId(), first.getName(), 0,
+                UUID.randomUUID().toString(), null, user.id(), user.displayName(), user.departmentCode(),
+                user.departmentName(), List.of(), null, null, Instant.now()));
+        return List.of(views.summary(first, tabs, permissions.levelFor(user, first), user));
     }
 
     private TemplateDefinition parseWorksheet(Sheet ws) {
@@ -176,24 +187,34 @@ public class ImportExportService {
 
     @Transactional(readOnly = true)
     public byte[] exportXlsx(Long sheetId, AuthUser user) throws IOException {
-        var sheet = sheetService.load(sheetId);
-        permissions.require(user, sheet, AccessLevel.VIEW);
+        var requested = sheetService.load(sheetId);
+        permissions.require(user, requested, AccessLevel.VIEW);
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet ws = wb.createSheet(safeSheetName(sheet.getName()));
             Map<String, CellStyle> styleCache = new HashMap<>();
-            for (var cell : cellRepository.findBySheetId(sheetId)) {
-                Row row = Optional.ofNullable(ws.getRow(cell.getRowIdx())).orElseGet(() -> ws.createRow(cell.getRowIdx()));
-                org.apache.poi.ss.usermodel.Cell xc = row.createCell(cell.getColIdx());
-                writeValue(xc, cell.getRawValue());
-                if (cell.getStyle() != null) xc.setCellStyle(styleCache.computeIfAbsent(cell.getStyle(), s -> toPoiStyle(wb, s)));
+            // A workbook exports as one file with one worksheet per tab, in tab order.
+            for (var sheet : sheetService.tabsOf(requested)) {
+                if (permissions.levelFor(user, sheet) == AccessLevel.NONE) continue;
+                String title = safeSheetName(sheet.getTabName() != null ? sheet.getTabName() : sheet.getName());
+                for (int n = 2; wb.getSheet(title) != null; n++) title = safeSheetName(title.substring(0, Math.min(title.length(), 27)) + " " + n);
+                writeWorksheet(wb, wb.createSheet(title), sheet, styleCache);
             }
-            for (var col : columnRepository.findBySheetIdOrderByColIndex(sheetId)) {
-                if (col.getWidth() != null) ws.setColumnWidth(col.getColIndex(), Math.min(255 * 256, (int) (col.getWidth() / 7.5 * 256)));
-            }
-            if (sheet.getHeaderRows() > 0) ws.createFreezePane(0, sheet.getHeaderRows());
             wb.write(out);
             return out.toByteArray();
         }
+    }
+
+    private void writeWorksheet(XSSFWorkbook wb, Sheet ws, com.factory.collab.domain.Sheet sheet, Map<String, CellStyle> styleCache) {
+        Long sheetId = sheet.getId();
+        for (var cell : cellRepository.findBySheetId(sheetId)) {
+            Row row = Optional.ofNullable(ws.getRow(cell.getRowIdx())).orElseGet(() -> ws.createRow(cell.getRowIdx()));
+            org.apache.poi.ss.usermodel.Cell xc = row.createCell(cell.getColIdx());
+            writeValue(xc, cell.getRawValue());
+            if (cell.getStyle() != null) xc.setCellStyle(styleCache.computeIfAbsent(cell.getStyle(), s -> toPoiStyle(wb, s)));
+        }
+        for (var col : columnRepository.findBySheetIdOrderByColIndex(sheetId)) {
+            if (col.getWidth() != null) ws.setColumnWidth(col.getColIndex(), Math.min(255 * 256, (int) (col.getWidth() / 7.5 * 256)));
+        }
+        if (sheet.getHeaderRows() > 0) ws.createFreezePane(0, sheet.getHeaderRows());
     }
 
     private static void writeValue(org.apache.poi.ss.usermodel.Cell xc, String raw) {

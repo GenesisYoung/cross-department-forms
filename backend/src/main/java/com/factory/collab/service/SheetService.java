@@ -47,17 +47,51 @@ public class SheetService {
     public List<SheetSummary> list(AuthUser user) {
         List<Sheet> sheets = sheetRepository.findAllByOrderByUpdatedAtDesc();
         Map<Long, AccessLevel> levels = permissions.levelsFor(user, sheets);
-        return sheets.stream()
-                .filter(s -> levels.get(s.getId()) != AccessLevel.NONE)
-                .map(s -> views.summary(s, levels.get(s.getId()), user))
-                .toList();
+        List<Sheet> visible = sheets.stream().filter(s -> levels.get(s.getId()) != AccessLevel.NONE).toList();
+        // A workbook is listed once, under its first tab; its other tabs are reached from the editor.
+        Map<Long, List<Sheet>> tabsByWorkbook = visible.stream().filter(Sheet::inWorkbook)
+                .collect(Collectors.groupingBy(Sheet::getWorkbookId));
+        tabsByWorkbook.values().forEach(tabs -> tabs.sort(Comparator.comparingInt(Sheet::getTabIndex)));
+        List<SheetSummary> out = new ArrayList<>();
+        Set<Long> listed = new HashSet<>();
+        for (Sheet s : visible) {
+            if (!s.inWorkbook()) {
+                out.add(views.summary(s, levels.get(s.getId()), user));
+                continue;
+            }
+            if (!listed.add(s.getWorkbookId())) continue;
+            List<Sheet> tabs = tabsByWorkbook.get(s.getWorkbookId());
+            Sheet first = tabs.get(0);
+            out.add(views.summary(first, tabs, levels.get(first.getId()), user));
+        }
+        return out;
+    }
+
+    /** Ids and labels of every sheet (including every workbook tab) the user can view. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> visibleLabels(AuthUser user) {
+        List<Sheet> sheets = sheetRepository.findAllByOrderByUpdatedAtDesc();
+        Map<Long, AccessLevel> levels = permissions.levelsFor(user, sheets);
+        Map<Long, String> out = new LinkedHashMap<>();
+        for (Sheet s : sheets) if (levels.get(s.getId()) != AccessLevel.NONE) out.put(s.getId(), s.label());
+        return out;
+    }
+
+    /** All tabs of the sheet's workbook in tab order, or just the sheet itself when it is standalone. */
+    public List<Sheet> tabsOf(Sheet sheet) {
+        if (!sheet.inWorkbook()) return List.of(sheet);
+        return sheetRepository.findByWorkbookIdOrderByTabIndexAsc(sheet.getWorkbookId());
+    }
+
+    private SheetDetail detailOf(Sheet sheet, AccessLevel level, AuthUser user) {
+        return views.detail(sheet, tabsOf(sheet), level, user);
     }
 
     @Transactional(readOnly = true)
     public SheetDetail get(Long id, AuthUser user) {
         Sheet sheet = load(id);
         AccessLevel level = permissions.require(user, sheet, AccessLevel.VIEW);
-        return views.detail(sheet, level, user);
+        return detailOf(sheet, level, user);
     }
 
     @Transactional(readOnly = true)
@@ -65,7 +99,7 @@ public class SheetService {
         Sheet sheet = load(id);
         permissions.require(user, sheet, AccessLevel.VIEW);
         List<CellChange> changes = changeRepository.findBySheetIdOrderByChangedAtDescIdDesc(id, PageRequest.of(0, Math.min(limit, 500)));
-        return views.changes(changes, Map.of(id, sheet.getName()), true);
+        return views.changes(changes, Map.of(id, sheet.label()), true);
     }
 
     @Transactional(readOnly = true)
@@ -73,7 +107,7 @@ public class SheetService {
         Sheet sheet = load(id);
         permissions.require(user, sheet, AccessLevel.VIEW);
         List<CellChange> changes = changeRepository.findBySheetIdAndRowIdxAndColIdxOrderByChangedAtDescIdDesc(id, row, col);
-        return views.changes(changes, Map.of(id, sheet.getName()), true);
+        return views.changes(changes, Map.of(id, sheet.label()), true);
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -96,7 +130,7 @@ public class SheetService {
         Sheet sheet = createFromDefinition(req.name(), req.description(), dept, templateId, def, user);
         AccessLevel level = permissions.levelFor(user, sheet);
         publish(sheet, SheetEvent.Type.SHEET_CREATED, user, null);
-        return views.detail(sheet, level, user);
+        return detailOf(sheet, level, user);
     }
 
     /** Creates a sheet with columns and cells from a definition (templates and imports). */
@@ -142,20 +176,27 @@ public class SheetService {
     public SheetDetail updateMeta(Long id, UpdateSheetRequest req, AuthUser user) {
         Sheet sheet = lock(id);
         AccessLevel level = permissions.require(user, sheet, AccessLevel.OWNER);
-        sheet.setName(req.name());
-        sheet.setDescription(req.description());
         if (req.headerRows() != null) sheet.setHeaderRows(req.headerRows());
-        sheet.touch();
-        publish(sheet, SheetEvent.Type.META_CHANGED, user, null);
-        return views.detail(sheet, level, user);
+        // Name and description belong to the whole workbook; header rows are per tab.
+        for (Sheet tab : tabsOf(sheet)) {
+            Sheet t = tab.getId().equals(sheet.getId()) ? sheet : tab;
+            t.setName(req.name());
+            t.setDescription(req.description());
+            t.touch();
+            publish(t, SheetEvent.Type.META_CHANGED, user, null);
+        }
+        return detailOf(sheet, level, user);
     }
 
     @Transactional
     public void delete(Long id, AuthUser user) {
         Sheet sheet = lock(id);
         permissions.require(user, sheet, AccessLevel.OWNER);
-        publish(sheet, SheetEvent.Type.SHEET_DELETED, user, null);
-        sheetRepository.delete(sheet); // cells, columns, permissions, history cascade in the database
+        // Deleting a workbook tab deletes the whole workbook, matching how it is listed.
+        for (Sheet tab : tabsOf(sheet)) {
+            publish(tab, SheetEvent.Type.SHEET_DELETED, user, null);
+            sheetRepository.delete(tab); // cells, columns, permissions, history cascade in the database
+        }
     }
 
     // ------------------------------------------------------------------ sharing & columns
@@ -164,6 +205,19 @@ public class SheetService {
     public List<PermissionDto> setPermissions(Long id, SetPermissionsRequest req, AuthUser user) {
         Sheet sheet = lock(id);
         permissions.require(user, sheet, AccessLevel.OWNER);
+        // Sharing applies to the whole workbook. Only the first tab announces the share, so
+        // departments get one notification per workbook rather than one per tab.
+        List<Sheet> tabs = tabsOf(sheet);
+        for (Sheet tab : tabs) {
+            Sheet t = tab.getId().equals(id) ? sheet : lock(tab.getId());
+            applyPermissions(t, req, user, tab.getId().equals(tabs.get(0).getId()));
+        }
+        permissionRepository.flush();
+        return views.permissions(id);
+    }
+
+    private void applyPermissions(Sheet sheet, SetPermissionsRequest req, AuthUser user, boolean announce) {
+        Long id = sheet.getId();
         Map<Long, SheetPermission> existing = permissionRepository.findBySheetId(id).stream()
                 .collect(Collectors.toMap(p -> p.getDepartment().getId(), Function.identity()));
         Set<Long> keep = new HashSet<>();
@@ -188,9 +242,7 @@ public class SheetService {
         existing.values().stream().filter(p -> !keep.contains(p.getDepartment().getId())).forEach(permissionRepository::delete);
         sheet.touch();
         publish(sheet, SheetEvent.Type.META_CHANGED, user, null);
-        if (!newlyShared.isEmpty()) publish(sheet, SheetEvent.Type.SHEET_SHARED, user, newlyShared);
-        permissionRepository.flush();
-        return views.permissions(id);
+        if (announce && !newlyShared.isEmpty()) publish(sheet, SheetEvent.Type.SHEET_SHARED, user, newlyShared);
     }
 
     @Transactional
@@ -229,9 +281,11 @@ public class SheetService {
     public boolean setSubscribed(Long id, boolean subscribe, AuthUser user) {
         Sheet sheet = load(id);
         permissions.require(user, sheet, AccessLevel.VIEW);
-        Optional<SheetSubscription> existing = subscriptionRepository.findBySheetIdAndUserId(id, user.id());
-        if (subscribe && existing.isEmpty()) subscriptionRepository.save(new SheetSubscription(id, user.id()));
-        if (!subscribe) existing.ifPresent(subscriptionRepository::delete);
+        for (Sheet tab : tabsOf(sheet)) { // following a workbook follows every tab
+            Optional<SheetSubscription> existing = subscriptionRepository.findBySheetIdAndUserId(tab.getId(), user.id());
+            if (subscribe && existing.isEmpty()) subscriptionRepository.save(new SheetSubscription(tab.getId(), user.id()));
+            if (!subscribe) existing.ifPresent(subscriptionRepository::delete);
+        }
         return subscribe;
     }
 
@@ -297,7 +351,7 @@ public class SheetService {
                 UUID.randomUUID().toString(), req.clientId(), user.id(), user.displayName(), user.departmentCode(),
                 user.departmentName(), List.of(), new SheetEvent.StructurePayload(req.op().name(), index, count), null, Instant.now());
         events.publish(e);
-        return views.detail(sheet, level, user);
+        return detailOf(sheet, level, user);
     }
 
     private void rewriteFormulas(Long sheetId, Function<String, String> fn) {

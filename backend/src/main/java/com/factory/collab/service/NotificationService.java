@@ -51,7 +51,7 @@ public class NotificationService {
         List<Notification> created = switch (e.type()) {
             case CELLS_UPDATED -> forCellChanges(sheet, e);
             case STRUCTURE_CHANGED -> forSubscribers(sheet, e, Notification.Type.STRUCTURE_CHANGED,
-                    "Layout changed in " + sheet.getName(), describeStructure(e));
+                    "Layout changed in " + sheet.label(), describeStructure(e));
             case SHEET_SHARED -> forShare(sheet, e);
             default -> List.of();
         };
@@ -77,7 +77,7 @@ public class NotificationService {
         notified.add(e.actorId());
 
         if (!watched.isEmpty()) {
-            String title = "⚠ " + watched.size() + " key change" + (watched.size() > 1 ? "s" : "") + " in " + sheet.getName();
+            String title = "⚠ " + watched.size() + " key change" + (watched.size() > 1 ? "s" : "") + " in " + sheet.label();
             String body = describeChanges(watched);
             for (User u : userRepository.findByDepartmentIdInAndEnabledTrue(permissions.departmentsWithAccess(sheet))) {
                 if (notified.add(u.getId())) {
@@ -85,7 +85,7 @@ public class NotificationService {
                 }
             }
         }
-        String title = valueChanges.size() + " cell" + (valueChanges.size() > 1 ? "s" : "") + " updated in " + sheet.getName();
+        String title = valueChanges.size() + " cell" + (valueChanges.size() > 1 ? "s" : "") + " updated in " + sheet.label();
         String body = describeChanges(valueChanges);
         for (User u : subscribers(sheet)) {
             if (notified.add(u.getId())) {
