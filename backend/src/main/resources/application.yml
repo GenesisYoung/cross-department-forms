@@ -5,7 +5,7 @@ spring:
   application:
     name: collab-dashboard
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:collab_dashboard}?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:collab_dashboard_local}?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
     username: ${DB_USER:root}
     password: ${DB_PASSWORD:GenesisYoung@Mysql0904}
   jpa:
@@ -49,5 +49,8 @@ collab:
     # Seeds departments, demo users, templates and sample sheets on an empty database.
     enabled: ${SEED_DEMO_DATA:true}
   sheet:
-    max-rows: 5000
-    max-cols: 200
+    max-rows: 100000
+    max-cols: 500
+  excel:
+    # Internal ZIP entries in an Excel file, NOT worksheet rows. Applied at startup.
+    max-file-count: ${EXCEL_MAX_FILE_COUNT:10000}

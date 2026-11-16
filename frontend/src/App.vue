@@ -8,7 +8,9 @@
 import { computed } from 'vue'
 import en from 'element-plus/es/locale/lang/en'
 import zhTw from 'element-plus/es/locale/lang/zh-tw'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { locale } from './i18n.js'
 
-const elementLocale = computed(() => locale.value === 'zh-TW' ? zhTw : en)
+const elementLocales = { en, 'zh-TW': zhTw, 'zh-CN': zhCn }
+const elementLocale = computed(() => elementLocales[locale.value] ?? en)
 </script>

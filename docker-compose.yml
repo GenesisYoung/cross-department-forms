@@ -1,12 +1,40 @@
-# Infrastructure for local development: MySQL 8 + RabbitMQ (with management UI on :15672).
+# Full development stack. Host ports: frontend 5174, backend 8081.
 services:
+  backend:
+    build:
+      context: ./backend
+    ports: ["8081:8080"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: collab_dashboard
+      DB_USER: root
+      DB_PASSWORD: collab
+      RABBIT_HOST: rabbitmq
+      EXCEL_MAX_FILE_COUNT: ${EXCEL_MAX_FILE_COUNT:-10000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    ports: ["5174:5173"]
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8080
+    depends_on:
+      - backend
+
   mysql:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: collab
       MYSQL_DATABASE: collab_dashboard
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    ports: ["3306:3306"]
+    ports: ["3307:3306"]
     volumes: [mysql-data:/var/lib/mysql]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pcollab"]
@@ -15,7 +43,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management
-    ports: ["5672:5672", "15672:15672"]
+    ports: ["5673:5672", "15673:15672"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s

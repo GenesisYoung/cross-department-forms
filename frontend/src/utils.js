@@ -23,10 +23,10 @@ export function timeAgo(iso) {
   if (s < 3600) return tr('{0} min ago', [Math.round(s / 60)])
   if (s < 86400) return tr('{0} h ago', [Math.round(s / 3600)])
   if (s < 86400 * 7) return tr('{0} d ago', [Math.round(s / 86400)])
-  return new Date(iso).toLocaleDateString(locale.value === 'zh-TW' ? 'zh-TW' : 'en-US')
+  return new Date(iso).toLocaleDateString(locale.value === 'en' ? 'en-US' : locale.value)
 }
 export function formatTime(iso) {
-  return iso ? new Date(iso).toLocaleString(locale.value === 'zh-TW' ? 'zh-TW' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''
+  return iso ? new Date(iso).toLocaleString(locale.value === 'en' ? 'en-US' : locale.value, { dateStyle: 'medium', timeStyle: 'short' }) : ''
 }
 export const show = (v) => (v === null || v === undefined || v === '' ? tr('(empty)') : v)
 export function deptDot(code) {

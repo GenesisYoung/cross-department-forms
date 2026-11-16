@@ -40,6 +40,7 @@ public class ImportExportService {
     private final SheetViews views;
     private final EventPublisher events;
     private final ObjectMapper mapper;
+    private final ExcelWorkbookReader workbookReader;
 
     @Value("${collab.sheet.max-rows}")
     private int maxRows;
@@ -60,7 +61,7 @@ public class ImportExportService {
         if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
             parsed.put(base, parseCsv(file.getInputStream()));
         } else if (lower.endsWith(".xlsx") || lower.endsWith(".xls") || lower.endsWith(".xlsm")) {
-            try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
+            try (InputStream input = file.getInputStream(); Workbook wb = workbookReader.open(input)) {
                 for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                     Sheet ws = wb.getSheetAt(i);
                     TemplateDefinition def = parseWorksheet(ws);

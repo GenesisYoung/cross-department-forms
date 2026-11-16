@@ -1,9 +1,12 @@
 import { ref, watchEffect } from 'vue'
-import messages from './messages.zh-TW.json'
+import zhTw from './messages.zh-TW.json'
+import zhCn from './messages.zh-CN.json'
+
+const messages = { 'zh-TW': zhTw, 'zh-CN': zhCn }
 
 export const LOCALE_KEY = 'collab.locale'
 export function normalizeLocale(value) {
-  return value === 'zh-TW' ? 'zh-TW' : 'en'
+  return value === 'zh-TW' || value === 'zh-CN' ? value : 'en'
 }
 function savedLocale() {
   try { return normalizeLocale(localStorage.getItem(LOCALE_KEY)) } catch { return 'en' }
@@ -15,7 +18,7 @@ export function setLocale(value) {
 }
 /** English source keys keep the fallback readable; interpolate values without translating user data. */
 export function tr(key, values = []) {
-  const text = locale.value === 'zh-TW' ? messages[key] ?? key : key
+  const text = messages[locale.value]?.[key] ?? key
   return text.replace(/\{(\d+)\}/g, (match, index) => String(values[index] ?? match))
 }
 watchEffect(() => {

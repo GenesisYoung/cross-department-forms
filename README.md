@@ -42,17 +42,37 @@ changes.
 * Each app instance has its own broadcast queue, so you can run several instances behind a load balancer and every client still gets every update. Notifications are created **once** (shared queue). Retries are idempotent, and a dead-letter queue catches poison messages.
 * Writes to one sheet are serialised with a row lock. Each change bumps the sheet's `version`. If a client sees a gap in versions, or its WebSocket reconnects, it reloads.
 
+## Running with Docker
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:5174. The backend is also available at http://localhost:8081.
+Compose runs the frontend with the Vite development server; there is no nginx service in this setup.
+
+Browser requests use `/api` and `/ws` on the frontend origin. Vite forwards both to
+`http://backend:8080` inside the Compose network. `8081` is the host's published port,
+not the backend container's listening port; `localhost` inside the frontend container
+refers to that frontend container.
+
+The Docker backend allows origins `http://localhost:5174` and `http://127.0.0.1:5174`.
+When accessing from another machine, set `CORS_ORIGINS` to the actual frontend origin
+(including scheme and port) before starting Compose. This also controls WebSocket origin checks.
+After editing frontend source or the Dockerfiles, rerun the build command above; source is copied
+into the images rather than mounted live. Existing MySQL data is retained in `mysql-data`.
+
 ## Running locally
 
-Prerequisites: JDK 17+, Node 18+, plus MySQL 8+ and RabbitMQ (use `docker compose up -d` or local installs).
+Prerequisites: JDK 17+, Node 18+, plus MySQL 8+ and RabbitMQ (use the command below or local installs).
 
 ```bash
 # 1. infrastructure (or use your own MySQL/RabbitMQ)
-docker compose up -d
+docker compose up -d mysql rabbitmq
 
 # 2. backend  →  http://localhost:8080
 cd backend
-DB_PASSWORD=collab ./mvnw spring-boot:run      # DB_PASSWORD empty by default (local root without password)
+DB_PASSWORD=collab ./mvnw spring-boot:run
 
 # 3. frontend →  http://localhost:5173  (proxies /api and /ws to :8080)
 cd frontend
@@ -91,7 +111,18 @@ On first start, the empty database is seeded with the departments, demo users (p
 | `JWT_SECRET` | dev value | **Set a random base64 256-bit secret in production** |
 | `JWT_TTL_HOURS` | `12` | |
 | `CORS_ORIGINS` | `http://localhost:5173` | comma-separated |
+| `SERVER_PORT` | `8080` | Backend listening port; Docker publishes it as host port `8081` |
+| `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Vite proxy for both `/api` and `/ws`; Compose sets `http://backend:8080`. Local overrides can use `frontend/.env.local`; restart Vite after changes |
 | `SEED_DEMO_DATA` | `true` | set `false` in production |
+| `EXCEL_MAX_FILE_COUNT` | `10000` | Maximum internal ZIP entries when opening Excel files, independent of worksheet row/column limits; restart the backend after changing |
+
+An Excel import error mentioning `MAX_FILE_COUNT` refers to files inside the Excel ZIP package,
+not rows. Configure `collab.excel.max-file-count` in `application.yml` or set
+`EXCEL_MAX_FILE_COUNT` for local backend startup. Other POI protections and the 20 MB upload
+limit remain active. Compose also forwards `EXCEL_MAX_FILE_COUNT` to the backend;
+rebuild/recreate the backend after changes. The frontend create-sheet/template inputs and
+backend template validation still have separate fixed row/column caps; changing `collab.sheet`
+does not update those controls.
 
 ### Production build
 
