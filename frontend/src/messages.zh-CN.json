@@ -276,5 +276,9 @@
   " template": " 模板",
   "{0} tabs": "{0} 个标签页",
   "Imported \"{0}\" with {1} tabs": "已导入“{0}”，共 {1} 个标签页",
-  "Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.": "确定删除“{0}”的全部 {1} 个标签页及其变更历史？此操作无法撤销。"
+  "Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.": "确定删除“{0}”的全部 {1} 个标签页及其变更历史？此操作无法撤销。",
+  "Theme": "主题",
+  "White theme": "白色主题",
+  "Dark theme": "深色主题",
+  "Follow system": "跟随系统"
 }

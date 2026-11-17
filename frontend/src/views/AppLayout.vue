@@ -26,6 +26,7 @@
       <el-header class="header" height="52px">
         <div class="crumb">{{ title }}</div>
         <div class="header-right">
+          <ThemeSelect />
           <LanguageSelect />
           <el-tooltip :content="live ? tr('Real-time connection active') : tr('Real-time connection lost — reconnecting')">
             <span class="live" :class="{ on: live }"><i></i></span>
@@ -84,6 +85,7 @@
 </template>
 
 <script setup>
+import ThemeSelect from '../components/ThemeSelect.vue'
 import LanguageSelect from '../components/LanguageSelect.vue'
 import { tr } from '../i18n.js'
 

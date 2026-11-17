@@ -276,5 +276,9 @@
   " template": " 範本",
   "{0} tabs": "{0} 個分頁",
   "Imported \"{0}\" with {1} tabs": "已匯入「{0}」，共 {1} 個分頁",
-  "Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.": "確定刪除「{0}」的全部 {1} 個分頁及其變更歷程？此操作無法復原。"
+  "Delete \"{0}\" with all {1} tabs and their change history? This cannot be undone.": "確定刪除「{0}」的全部 {1} 個分頁及其變更歷程？此操作無法復原。",
+  "Theme": "主題",
+  "White theme": "白色主題",
+  "Dark theme": "深色主題",
+  "Follow system": "跟隨系統"
 }

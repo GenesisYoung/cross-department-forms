@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="login-card">
-      <div class="login-language"><LanguageSelect /></div>
+      <div class="login-language"><ThemeSelect /><LanguageSelect /></div>
       <div class="brand">
         <img src="/favicon.svg" alt="" />
         <div>
@@ -34,6 +34,7 @@
 </template>
 
 <script setup>
+import ThemeSelect from '../components/ThemeSelect.vue'
 import LanguageSelect from '../components/LanguageSelect.vue'
 import { tr } from '../i18n.js'
 
@@ -70,7 +71,7 @@ async function submit() {
 </script>
 
 <style scoped>
-.login-language { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.login-language { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 16px; }
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--page); }
 .login-card { width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 10px 40px rgba(15, 30, 60, 0.08); }
 .brand { display: flex; gap: 14px; align-items: center; margin-bottom: 22px; }

@@ -8,11 +8,9 @@ import App from './App.vue'
 import router from './router.js'
 import './styles.css'
 
-// Follow the OS light/dark preference.
-const media = window.matchMedia('(prefers-color-scheme: dark)')
-const applyTheme = () => document.documentElement.classList.toggle('dark', media.matches)
-applyTheme()
-media.addEventListener('change', applyTheme)
+import { initTheme } from './theme.js'
+
+initTheme()
 
 const app = createApp(App)
 for (const [name, comp] of Object.entries(Icons)) app.component(name, comp)
