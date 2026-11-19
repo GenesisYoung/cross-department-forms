@@ -82,6 +82,17 @@
         <el-tooltip :content="tr('Clear formatting')"><el-button size="small" :icon="Brush" @click="clearFormatting" /></el-tooltip>
         <el-tooltip :content="tr('Find & replace (Ctrl+F)')"><el-button size="small" :icon="Search" @click="openFind" /></el-tooltip>
         <span class="sep"></span>
+        <el-dropdown trigger="click" @command="onSort">
+          <el-button size="small" :icon="Sort">{{ tr("Sort") }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="asc">{{ tr("Sort A → Z (by column {0})", [colName(selection.c)]) }}</el-dropdown-item>
+              <el-dropdown-item command="desc">{{ tr("Sort Z → A (by column {0})", [colName(selection.c)]) }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-tooltip :content="tr('Filter rows')"><el-button size="small" :type="activeFilters.length ? 'primary' : 'default'" :icon="Filter" @click="openFilter">{{ activeFilters.length ? tr("Filtered ({0})", [activeFilters.length]) : tr("Filter") }}</el-button></el-tooltip>
+        <span class="sep"></span>
         <el-button size="small" :icon="Plus" :disabled="!canRows" @click="structure('APPEND_ROWS', 0, 50)">{{ tr("50 rows") }}</el-button>
         <el-button size="small" :icon="Plus" :disabled="!isOwner" @click="structure('APPEND_COLS', 0, 1)">{{ tr("Column") }}</el-button>
         <el-button size="small" :icon="Operation" :disabled="!isOwner" @click="openColumn(selection.c)">{{ tr("Column rules") }}</el-button>
@@ -124,6 +135,7 @@
         :can-structure="{ rows: canRows, cols: isOwner }"
         :merges="merges"
         :merge-at="mergeAt"
+        :hidden-rows="hiddenRows"
         @edit="(e) => applyEdits(e)"
         @select="onSelect"
         @resize-col="resizeColumn"
@@ -149,6 +161,29 @@
           <el-button size="small" @click="replaceAllMatches">{{ tr("Replace all") }}</el-button>
         </div>
         <el-checkbox v-model="findCase" size="small">{{ tr("Match case") }}</el-checkbox>
+      </div>
+
+      <!-- filter rows (view-only: hides non-matching rows locally, like an AutoFilter) -->
+      <div v-if="filterOpen" class="filter-panel" @keydown.esc.stop="closeFilter">
+        <div class="filter-head">
+          <span class="filter-title">{{ tr("Filter · column {0}", [colName(filterCol)]) }}<span v-if="headerText(filterCol)" class="filter-hdr">{{ headerText(filterCol) }}</span></span>
+          <el-button size="small" text :icon="Close" @click="closeFilter" />
+        </div>
+        <div class="filter-row">
+          <el-select v-model="filterForm.op" size="small" class="filter-op">
+            <el-option v-for="o in FILTER_OPS" :key="o.value" :label="tr(o.label)" :value="o.value" />
+          </el-select>
+          <el-input v-if="opNeedsValue(filterForm.op)" v-model="filterForm.val" size="small" :placeholder="tr('Value')"
+                    clearable @keydown.enter.prevent="applyFilter" />
+        </div>
+        <div class="filter-row">
+          <el-button size="small" type="primary" @click="applyFilter">{{ tr("Apply") }}</el-button>
+          <el-button size="small" :disabled="!filters[filterCol]" @click="clearFilterCol(filterCol)">{{ tr("Clear this column") }}</el-button>
+        </div>
+        <div v-if="filterSummary.length" class="filter-active">
+          <el-tag v-for="f in filterSummary" :key="f.c" size="small" closable type="info" @close="clearFilterCol(f.c)">{{ f.text }}</el-tag>
+          <el-button size="small" text type="danger" @click="clearAllFilters">{{ tr("Clear all") }}</el-button>
+        </div>
       </div>
 
       <!-- workbook tabs (one per worksheet; add your own or from an imported Excel file) -->
@@ -222,7 +257,7 @@ import { tr } from '../i18n.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Clock, Share, MoreFilled, Download, DocumentCopy, Setting, Delete, RefreshLeft, RefreshRight, Plus, Operation, ArrowDown, Brush, Search, Close, Right, Back } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Share, MoreFilled, Download, DocumentCopy, Setting, Delete, RefreshLeft, RefreshRight, Plus, Operation, ArrowDown, Brush, Search, Close, Right, Back, Sort, Filter } from '@element-plus/icons-vue'
 import api, { download } from '../api.js'
 import { subscribe, onConnectionChange, CLIENT_ID } from '../realtime.js'
 import { useAuth } from '../stores/auth.js'
@@ -565,6 +600,156 @@ function onMerge(cmd) {
   mergeSelection(cmd === 'merge-center')
 }
 
+// ------------------------------------------------------------------ sort (order)
+// The extent of actual data, so a single-cell selection can "sort the whole table".
+const usedBounds = computed(() => {
+  void renderKey.value
+  let maxRow = sheet.value?.headerRows ?? 0, maxCol = 0
+  for (const k of cells.value.keys()) {
+    const i = k.indexOf(',')
+    const r = +k.slice(0, i), c = +k.slice(i + 1)
+    if (r > maxRow) maxRow = r
+    if (c > maxCol) maxCol = c
+  }
+  return { maxRow, maxCol }
+})
+
+/** Comparable key for a cell: numbers sort numerically, everything else as text; blanks always last. */
+function sortKey(r, c) {
+  const d = getDisplay(r, c)
+  const v = d.value
+  if (v === null || v === undefined || v === '') return { blank: true }
+  if (typeof v === 'number') return { blank: false, n: v }
+  return { blank: false, s: String(d.text ?? v) }
+}
+function compareKeys(a, b, desc) {
+  if (a.blank && b.blank) return 0
+  if (a.blank) return 1 // blanks sink to the bottom regardless of direction
+  if (b.blank) return -1
+  let r
+  if (a.n != null && b.n != null) r = a.n - b.n
+  else r = String(a.n ?? a.s).localeCompare(String(b.n ?? b.s), undefined, { numeric: true, sensitivity: 'base' })
+  return desc ? -r : r
+}
+
+/** Reorders rows within the selected block by the active column (destructive, persisted, undoable). */
+function sortRange(desc) {
+  const s = sheet.value
+  if (!s) return
+  const hr = s.headerRows
+  let { r1, r2, c1, c2 } = selection
+  if (r1 === r2) { // single row/cell selected → sort the whole used table by this column
+    const b = usedBounds.value
+    r1 = hr; r2 = b.maxRow; c1 = 0; c2 = b.maxCol
+  }
+  if (r1 < hr) r1 = hr // never reorder frozen header rows
+  if (r2 <= r1) return ElMessage.info(tr("Select at least two rows to sort"))
+  const keyCol = Math.min(Math.max(selection.c, c1), c2)
+  // a merge inside the band would be torn apart by reordering — refuse rather than corrupt it
+  for (const m of merges.value) {
+    if (m.r <= r2 && m.r + m.rs - 1 >= r1 && m.c <= c2 && m.c + m.cs - 1 >= c1) return ElMessage.warning(tr("Can't sort a range that contains merged cells"))
+  }
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (canEdit(r, c)) return ElMessage.warning(tr("Can't sort: the range contains read-only cells"))
+  if ((r2 - r1 + 1) * (c2 - c1 + 1) > 20000) return ElMessage.warning(tr("Select a smaller range to sort"))
+
+  const rows = []
+  for (let r = r1; r <= r2; r++) {
+    const line = []
+    for (let c = c1; c <= c2; c++) line.push({ v: getRaw(r, c), s: cells.value.get(key(r, c))?.s ?? null })
+    rows.push({ line, key: sortKey(r, keyCol) })
+  }
+  const order = rows.map((_, i) => i).sort((a, b) => compareKeys(rows[a].key, rows[b].key, desc) || (a - b))
+  if (order.every((v, i) => v === i)) return ElMessage.info(tr("Already sorted"))
+  const edits = []
+  for (let i = 0; i < order.length; i++) {
+    const src = rows[order[i]].line
+    const r = r1 + i
+    for (let j = 0; j < src.length; j++) {
+      const c = c1 + j
+      const curV = getRaw(r, c), curS = cells.value.get(key(r, c))?.s ?? null
+      if (src[j].v !== curV || src[j].s !== curS) edits.push({ r, c, v: src[j].v, s: src[j].s })
+    }
+  }
+  if (edits.length) { applyEdits(edits); ElMessage.success(tr("Sorted {0} rows by column {1}", [order.length, colName(keyCol)])) }
+  grid.value?.focus()
+}
+const onSort = (cmd) => sortRange(cmd === 'desc')
+
+// ------------------------------------------------------------------ filter (view-only)
+// Each entry filters one column; rows that fail any active condition are hidden locally (not
+// persisted, not shared) — the grid collapses them out of view, like an Excel AutoFilter.
+const filters = reactive({}) // colIndex -> { op, val }
+const filterOpen = ref(false)
+const filterCol = ref(0)
+const filterForm = reactive({ op: 'contains', val: '' })
+const FILTER_OPS = [
+  { value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' }, { value: 'neq', label: 'does not equal' },
+  { value: 'gt', label: 'greater than' }, { value: 'gte', label: 'greater or equal' },
+  { value: 'lt', label: 'less than' }, { value: 'lte', label: 'less or equal' },
+  { value: 'empty', label: 'is empty' }, { value: 'notempty', label: 'is not empty' }
+]
+const opNeedsValue = (op) => !['empty', 'notempty'].includes(op)
+const activeFilters = computed(() => Object.entries(filters)
+  .filter(([, f]) => f && f.op && (!opNeedsValue(f.op) || (f.val ?? '') !== ''))
+  .map(([c, f]) => ({ c: Number(c), op: f.op, val: f.val })))
+
+function matchFilter(r, f) {
+  const d = getDisplay(r, f.c)
+  const v = d.value
+  const empty = v === null || v === undefined || v === ''
+  switch (f.op) {
+    case 'empty': return empty
+    case 'notempty': return !empty
+    case 'contains': return String(d.text ?? '').toLowerCase().includes(String(f.val).toLowerCase())
+    case 'eq': case 'neq': {
+      const want = f.val
+      let eq
+      if (typeof v === 'number' && want !== '' && !isNaN(Number(want))) eq = v === Number(want)
+      else eq = String(d.text ?? '').toLowerCase() === String(want).toLowerCase()
+      return f.op === 'eq' ? eq : !eq
+    }
+    case 'gt': case 'gte': case 'lt': case 'lte': {
+      const n = typeof v === 'number' ? v : Number(v)
+      const w = Number(f.val)
+      if (isNaN(n) || isNaN(w)) return false
+      return f.op === 'gt' ? n > w : f.op === 'gte' ? n >= w : f.op === 'lt' ? n < w : n <= w
+    }
+    default: return true
+  }
+}
+const hiddenRows = computed(() => {
+  void renderKey.value
+  const fs = activeFilters.value
+  const hidden = new Set()
+  if (!fs.length || !sheet.value) return hidden
+  const hr = sheet.value.headerRows
+  for (let r = hr; r < sheet.value.rowCount; r++) {
+    if (!fs.every((f) => matchFilter(r, f))) hidden.add(r)
+  }
+  return hidden
+})
+const filterSummary = computed(() => activeFilters.value.map((f) => {
+  const name = headerText(f.c) || colName(f.c)
+  const op = tr(FILTER_OPS.find((o) => o.value === f.op)?.label || f.op)
+  return { c: f.c, text: opNeedsValue(f.op) ? `${name} ${op} "${f.val}"` : `${name} ${op}` }
+}))
+function openFilter() {
+  findOpen.value = false
+  filterCol.value = selection.c
+  const cur = filters[selection.c]
+  filterForm.op = cur?.op || 'contains'
+  filterForm.val = cur?.val ?? ''
+  filterOpen.value = true
+}
+function closeFilter() { filterOpen.value = false; grid.value?.focus() }
+function applyFilter() {
+  const c = filterCol.value
+  if (!opNeedsValue(filterForm.op) || (filterForm.val ?? '') !== '') filters[c] = { op: filterForm.op, val: filterForm.val }
+  else delete filters[c]
+}
+function clearFilterCol(c) { delete filters[c ?? filterCol.value]; if (c === undefined) filterForm.val = '' }
+function clearAllFilters() { for (const k of Object.keys(filters)) delete filters[k]; filterForm.val = '' }
+
 // ------------------------------------------------------------------ find & replace
 const findOpen = ref(false)
 const findText = ref('')
@@ -590,8 +775,8 @@ const matches = computed(() => {
   return out
 })
 function openFind() {
+  filterOpen.value = false
   findOpen.value = true
-  if (refLabel.value) { /* keep */ }
   nextTick(() => findInput.value?.focus?.())
 }
 function closeFind() {
@@ -728,6 +913,9 @@ async function onGridAction(action, sel) {
     case 'unmerge': return unmergeSelection()
     case 'clear-format': return clearFormatting()
     case 'find': return openFind()
+    case 'sort-asc': return sortRange(false)
+    case 'sort-desc': return sortRange(true)
+    case 'filter': return openFilter()
     case 'insert-row-above': return structure('INSERT_ROWS', sel.r1, sel.r2 - sel.r1 + 1)
     case 'insert-row-below': return structure('INSERT_ROWS', sel.r2 + 1, sel.r2 - sel.r1 + 1)
     case 'insert-col-left': return structure('INSERT_COLS', sel.c1, sel.c2 - sel.c1 + 1)
@@ -908,6 +1096,7 @@ function onGlobalKey(e) {
   const mod = e.ctrlKey || e.metaKey
   if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind() }
   else if (e.key === 'Escape' && findOpen.value) closeFind()
+  else if (e.key === 'Escape' && filterOpen.value) closeFilter()
 }
 onMounted(() => window.addEventListener('keydown', onGlobalKey))
 
@@ -954,6 +1143,15 @@ onBeforeUnmount(() => {
 .find-panel .find-row { display: flex; align-items: center; gap: 6px; }
 .find-panel .find-row .el-input { flex: 1; }
 .find-panel .find-count { font-size: 12px; color: var(--text-2); white-space: nowrap; min-width: 48px; text-align: center; }
+.filter-panel { position: absolute; top: 96px; right: 24px; z-index: 30; width: 320px; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
+.filter-panel .filter-head { display: flex; align-items: center; justify-content: space-between; }
+.filter-panel .filter-title { font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; }
+.filter-panel .filter-hdr { font-weight: 400; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; max-width: 180px; white-space: nowrap; }
+.filter-panel .filter-row { display: flex; align-items: center; gap: 6px; }
+.filter-panel .filter-op { flex: 1; }
+.filter-panel .filter-row .el-input { flex: 1; }
+.filter-panel .filter-active { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding-top: 4px; border-top: 1px solid var(--border); }
+.filter-panel .filter-active .el-tag { max-width: 100%; }
 .status-bar { display: flex; gap: 16px; padding: 4px 16px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--border); background: var(--grid-head); }
 .status-bar .remote { color: var(--warn-text); }
 .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-right: 4px; }

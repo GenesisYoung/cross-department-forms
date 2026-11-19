@@ -104,7 +104,8 @@ const props = defineProps({
   renderKey: { type: Number, default: 0 }, // bump to force re-render after data changes
   canStructure: { type: Object, default: () => ({ rows: false, cols: false }) },
   merges: { type: Array, default: () => [] }, // [{ r, c, rs, cs }] anchor + span of every merged region
-  mergeAt: { type: Function, default: () => null } // (r,c) => region containing the cell, or null
+  mergeAt: { type: Function, default: () => null }, // (r,c) => region containing the cell, or null
+  hiddenRows: { type: Object, default: () => new Set() } // Set of body row indices hidden by a filter (view-only)
 })
 const emit = defineEmits(['edit', 'select', 'resize-col', 'resize-col-preview', 'action'])
 
@@ -136,21 +137,48 @@ const colOffsets = computed(() => {
 })
 const totalWidth = computed(() => colOffsets.value[props.colCount])
 const frozenRows = computed(() => Math.min(props.headerRows, props.rowCount))
-const firstBody = computed(() => frozenRows.value)
-const startRow = computed(() => Math.max(firstBody.value, Math.floor(scrollTop.value / ROW_H) - BUFFER + firstBody.value))
-const endRow = computed(() => Math.min(props.rowCount, startRow.value + Math.ceil(viewH.value / ROW_H) + BUFFER * 2))
-const visibleRows = computed(() => {
+
+// Body rows actually shown (a filter can hide some). When nothing is hidden this is just
+// every row below the frozen header, so positions stay identical to the unfiltered grid.
+const bodyList = computed(() => {
   void props.renderKey
+  const hidden = props.hiddenRows
   const out = []
-  for (let r = startRow.value; r < endRow.value; r++) out.push(r)
+  for (let r = frozenRows.value; r < props.rowCount; r++) if (!hidden.has(r)) out.push(r)
   return out
 })
-const topPad = computed(() => (startRow.value - firstBody.value) * ROW_H)
-const bottomPad = computed(() => (props.rowCount - endRow.value) * ROW_H)
+const rowToVisual = computed(() => {
+  const m = new Map()
+  const list = bodyList.value
+  for (let i = 0; i < list.length; i++) m.set(list[i], i)
+  return m
+})
+/** Visual index of a body row among the visible rows (binary search for hidden/out-of-range rows). */
+function bodyVisual(r) {
+  const v = rowToVisual.value.get(r)
+  if (v !== undefined) return v
+  const list = bodyList.value
+  let lo = 0, hi = list.length
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid] < r) lo = mid + 1; else hi = mid }
+  return lo
+}
+const startIdx = computed(() => Math.max(0, Math.floor(scrollTop.value / ROW_H) - BUFFER))
+const endIdx = computed(() => Math.min(bodyList.value.length, startIdx.value + Math.ceil(viewH.value / ROW_H) + BUFFER * 2))
+const visibleRows = computed(() => bodyList.value.slice(startIdx.value, endIdx.value))
+const topPad = computed(() => startIdx.value * ROW_H)
+const bottomPad = computed(() => (bodyList.value.length - endIdx.value) * ROW_H)
 
 function rowTop(r) {
   if (r < frozenRows.value) return scrollTop.value + LETTERS_H + r * ROW_H
-  return LETTERS_H + r * ROW_H
+  return LETTERS_H + frozenRows.value * ROW_H + bodyVisual(r) * ROW_H
+}
+function isHiddenRow(r) { return r >= frozenRows.value && props.hiddenRows.has(r) }
+/** Nearest visible row to r (searches down first, then up) — used when a filter hides the current cell. */
+function snapVisible(r) {
+  if (!isHiddenRow(r)) return r
+  for (let d = r + 1; d < props.rowCount; d++) if (!isHiddenRow(d)) return d
+  for (let d = r - 1; d >= 0; d--) if (!isHiddenRow(d)) return d
+  return r
 }
 
 const range = computed(() => ({
@@ -241,15 +269,20 @@ function mergeVisualStyle(s, kind) {
 }
 const visibleMerges = computed(() => {
   void props.renderKey
+  const vis = visibleRows.value
+  const firstData = vis.length ? vis[0] : props.rowCount
+  const lastData = vis.length ? vis[vis.length - 1] : -1
   const out = []
   for (const a of props.merges) {
     const inFrozen = a.r < frozenRows.value
-    const visibleBody = a.r + a.rs > startRow.value && a.r < endRow.value
+    const visibleBody = a.r <= lastData && (a.r + a.rs - 1) >= firstData
     if (!inFrozen && !visibleBody) continue
     const d = props.getDisplay(a.r, a.c)
     const s = props.getStyle(a.r, a.c)
     const left = colOffsets.value[a.c]
     const top = rowTop(a.r)
+    // compress the height across any rows a filter has hidden inside the merged region
+    const height = inFrozen ? a.rs * ROW_H : (bodyVisual(a.r + a.rs) - bodyVisual(a.r)) * ROW_H
     out.push({
       key: a.r + ',' + a.c,
       text: d.text,
@@ -258,7 +291,7 @@ const visibleMerges = computed(() => {
         left: left + 'px',
         top: top + 'px',
         width: (colOffsets.value[a.c + a.cs] - left) + 'px',
-        height: (a.rs * ROW_H) + 'px',
+        height: height + 'px',
         zIndex: inFrozen ? 5 : 1,
         ...mergeVisualStyle(s, d.kind)
       }
@@ -277,6 +310,7 @@ const selHasMerge = computed(() => {
 function setSel(r, c, extend = false) {
   r = Math.max(0, Math.min(props.rowCount - 1, r))
   c = Math.max(0, Math.min(props.colCount - 1, c))
+  if (!extend) r = snapVisible(r) // never land the active cell on a filtered-out row
   if (extend) {
     sel.r2 = r; sel.c2 = c
     expandSelToMerges()
@@ -314,7 +348,7 @@ function ensureVisible(r, c) {
   const el = scroller.value
   if (!el) return
   if (r >= frozenRows.value) {
-    const top = LETTERS_H + r * ROW_H
+    const top = rowTop(r)
     const frozenH = LETTERS_H + frozenRows.value * ROW_H
     if (top - frozenH < el.scrollTop + LETTERS_H) el.scrollTop = Math.max(0, top - frozenH)
     else if (top + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_H - el.clientHeight
@@ -482,6 +516,12 @@ function move(key, extend) {
       if (key === 'ArrowRight') return setSel(a.r, a.c + a.cs)
       return setSel(a.r, a.c - 1)
     }
+    if (d[0] !== 0) {
+      let nr = sel.r
+      do { nr += d[0] } while (nr >= 0 && nr < props.rowCount && isHiddenRow(nr))
+      if (nr < 0 || nr >= props.rowCount) nr = sel.r // no visible row that way — stay put
+      return setSel(nr, sel.c)
+    }
     return setSel(sel.r + d[0], sel.c + d[1])
   }
   setSel(sel.r2 + d[0], sel.c2 + d[1], true)
@@ -613,6 +653,10 @@ const menuItems = computed(() => {
     { key: 'insert-col-right', label: tr("Insert {0} column(s) right", [nc]), disabled: !props.canStructure.cols },
     { key: 'delete-cols', label: tr("Delete column(s) {0}–{1}", [colName(c1), colName(c2)]), disabled: !props.canStructure.cols },
     { key: 'd3', divider: true },
+    { key: 'sort-asc', label: tr("Sort {0} A → Z", [colName(sel.c)]) },
+    { key: 'sort-desc', label: tr("Sort {0} Z → A", [colName(sel.c)]) },
+    { key: 'filter', label: tr("Filter…") },
+    { key: 'd3b', divider: true },
     { key: 'merge', label: tr("Merge cells"), disabled: nr * nc < 2 },
     { key: 'merge-center', label: tr("Merge & center"), disabled: nr * nc < 2 },
     { key: 'unmerge', label: tr("Unmerge cells"), disabled: !selHasMerge.value },
@@ -659,6 +703,8 @@ onBeforeUnmount(() => {
 watch(() => [props.rowCount, props.colCount], () => {
   if (sel.r >= props.rowCount || sel.c >= props.colCount) setSel(Math.min(sel.r, props.rowCount - 1), Math.min(sel.c, props.colCount - 1))
 })
+// a filter may have just hidden the active cell's row — move onto the nearest visible one
+watch(() => props.hiddenRows, () => { if (isHiddenRow(sel.r)) setSel(snapVisible(sel.r), sel.c) })
 
 defineExpose({
   selection: () => ({ ...sel, ...range.value }),
