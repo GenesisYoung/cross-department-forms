@@ -68,6 +68,21 @@ public class SheetController {
         return sheetService.changeStructure(id, req, CurrentUser.get());
     }
 
+    @PostMapping("/{id}/tabs")
+    public SheetDetail addTab(@PathVariable Long id, @Valid @RequestBody(required = false) TabRequest req) {
+        return sheetService.addTab(id, req == null ? null : req.name(), CurrentUser.get());
+    }
+
+    @PutMapping("/{id}/tab")
+    public SheetDetail renameTab(@PathVariable Long id, @Valid @RequestBody TabRequest req) {
+        return sheetService.renameTab(id, req.name(), CurrentUser.get());
+    }
+
+    @DeleteMapping("/{id}/tab")
+    public SheetDetail deleteTab(@PathVariable Long id) {
+        return sheetService.deleteTab(id, CurrentUser.get());
+    }
+
     @PutMapping("/{id}/columns/{col}")
     public ColumnDto updateColumn(@PathVariable Long id, @PathVariable int col, @Valid @RequestBody UpdateColumnRequest req) {
         return sheetService.updateColumn(id, col, req, CurrentUser.get());

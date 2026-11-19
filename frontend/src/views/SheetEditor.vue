@@ -64,6 +64,23 @@
         <el-select size="small" class="fmt" :model-value="activeStyle.fmt || ''" @change="(v) => setStyle('fmt', v || null)">
           <el-option v-for="f in FORMATS" :key="f.value" :label="tr(f.label)" :value="f.value" />
         </el-select>
+        <el-button-group>
+          <el-tooltip :content="tr('Increase decimal places')"><el-button size="small" class="dec" @click="stepDecimals(1)">+.0</el-button></el-tooltip>
+          <el-tooltip :content="tr('Decrease decimal places')"><el-button size="small" class="dec" @click="stepDecimals(-1)">−.0</el-button></el-tooltip>
+        </el-button-group>
+        <span class="sep"></span>
+        <el-dropdown trigger="click" @command="onMerge">
+          <el-button size="small" :type="selMerged ? 'primary' : 'default'">{{ tr("Merge") }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="merge-center">{{ tr("Merge & center") }}</el-dropdown-item>
+              <el-dropdown-item command="merge">{{ tr("Merge cells") }}</el-dropdown-item>
+              <el-dropdown-item command="unmerge" divided :disabled="!selMerged">{{ tr("Unmerge cells") }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-tooltip :content="tr('Clear formatting')"><el-button size="small" :icon="Brush" @click="clearFormatting" /></el-tooltip>
+        <el-tooltip :content="tr('Find & replace (Ctrl+F)')"><el-button size="small" :icon="Search" @click="openFind" /></el-tooltip>
         <span class="sep"></span>
         <el-button size="small" :icon="Plus" :disabled="!canRows" @click="structure('APPEND_ROWS', 0, 50)">{{ tr("50 rows") }}</el-button>
         <el-button size="small" :icon="Plus" :disabled="!isOwner" @click="structure('APPEND_COLS', 0, 1)">{{ tr("Column") }}</el-button>
@@ -105,25 +122,55 @@
         :flashes="flashes"
         :render-key="renderKey"
         :can-structure="{ rows: canRows, cols: isOwner }"
+        :merges="merges"
+        :merge-at="mergeAt"
         @edit="(e) => applyEdits(e)"
         @select="onSelect"
         @resize-col="resizeColumn"
         @action="onGridAction"
       />
 
-      <!-- workbook tabs (one per worksheet of an imported Excel file) -->
-      <div v-if="sheet.tabs?.length > 1" class="tab-bar" role="tablist">
-        <button
-          v-for="t in sheet.tabs"
+      <!-- find & replace -->
+      <div v-if="findOpen" class="find-panel" @keydown.esc.stop="closeFind">
+        <div class="find-row">
+          <el-input ref="findInput" v-model="findText" size="small" :placeholder="tr('Find')" clearable
+                    @keydown.enter.prevent="findNext" />
+          <span class="find-count">{{ matches.length ? (matchIndex + 1 || 1) + '/' + matches.length : tr('0 results') }}</span>
+          <el-button-group>
+            <el-button size="small" :icon="Back" :disabled="!matches.length" @click="findPrev" />
+            <el-button size="small" :icon="Right" :disabled="!matches.length" @click="findNext" />
+          </el-button-group>
+          <el-button size="small" text :icon="Close" @click="closeFind" />
+        </div>
+        <div class="find-row">
+          <el-input v-model="replaceText" size="small" :placeholder="tr('Replace with')"
+                    @keydown.enter.prevent="replaceCurrent" />
+          <el-button size="small" @click="replaceCurrent">{{ tr("Replace") }}</el-button>
+          <el-button size="small" @click="replaceAllMatches">{{ tr("Replace all") }}</el-button>
+        </div>
+        <el-checkbox v-model="findCase" size="small">{{ tr("Match case") }}</el-checkbox>
+      </div>
+
+      <!-- workbook tabs (one per worksheet; add your own or from an imported Excel file) -->
+      <div v-if="showTabBar" class="tab-bar" role="tablist">
+        <div
+          v-for="t in displayTabs"
           :key="t.id"
-          type="button"
           role="tab"
           class="tab"
           :class="{ active: t.id === sheet.id }"
           :aria-selected="t.id === sheet.id"
           :title="t.name"
           @click="switchTab(t.id)"
-        >{{ t.name }}</button>
+          @dblclick="renameTab(t)"
+        >
+          <span class="tab-label">{{ t.name }}</span>
+          <el-icon v-if="canManageTabs && t.id === sheet.id && displayTabs.length > 1" class="tab-close"
+                   :title="tr('Delete worksheet')" @click.stop="deleteTab(t)"><Close /></el-icon>
+        </div>
+        <button v-if="canManageTabs" type="button" class="tab-add" :title="tr('Add worksheet')" @click="addTab">
+          <el-icon><Plus /></el-icon>
+        </button>
       </div>
 
       <div class="status-bar">
@@ -172,10 +219,10 @@
 <script setup>
 import { tr } from '../i18n.js'
 
-import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Clock, Share, MoreFilled, Download, DocumentCopy, Setting, Delete, RefreshLeft, RefreshRight, Plus, Operation } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Share, MoreFilled, Download, DocumentCopy, Setting, Delete, RefreshLeft, RefreshRight, Plus, Operation, ArrowDown, Brush, Search, Close, Right, Back } from '@element-plus/icons-vue'
 import api, { download } from '../api.js'
 import { subscribe, onConnectionChange, CLIENT_ID } from '../realtime.js'
 import { useAuth } from '../stores/auth.js'
@@ -204,6 +251,7 @@ const renderKey = ref(0)
 const selection = reactive({ r: 0, c: 0, r1: 0, r2: 0, c1: 0, c2: 0 })
 const grid = ref(null)
 const fbar = ref(null)
+const findInput = ref(null)
 const formulaDraft = ref('')
 const flashes = reactive({})
 const live = ref(false)
@@ -244,6 +292,34 @@ const columnsByIndex = computed(() => {
 })
 const isOwner = computed(() => sheet.value?.access === 'OWNER')
 const canRows = computed(() => ['OWNER', 'EDIT'].includes(sheet.value?.access))
+
+// ------------------------------------------------------------------ merged cells
+// A merge is stored on the top-left ("anchor") cell's style as m: [rowspan, colspan]; the
+// cells it covers are cleared. The whole thing rides on the opaque style JSON — no schema change.
+const merges = computed(() => {
+  void renderKey.value
+  const list = []
+  for (const [k, cell] of cells.value) {
+    const m = cell.so?.m
+    if (Array.isArray(m) && m.length === 2) {
+      const rs = Math.max(1, m[0] | 0), cs = Math.max(1, m[1] | 0)
+      if (rs > 1 || cs > 1) {
+        const [r, c] = k.split(',').map(Number)
+        list.push({ r, c, rs, cs })
+      }
+    }
+  }
+  return list
+})
+const mergeCover = computed(() => {
+  const map = new Map() // "r,c" -> anchor region, for every cell a region covers (anchor included)
+  for (const a of merges.value) {
+    for (let r = a.r; r < a.r + a.rs; r++) for (let c = a.c; c < a.c + a.cs; c++) map.set(r + ',' + c, a)
+  }
+  return map
+})
+function mergeAt(r, c) { return mergeCover.value.get(r + ',' + c) || null }
+function isCovered(r, c) { const a = mergeAt(r, c); return !!a && !(a.r === r && a.c === c) }
 
 /** Mirrors the server-side rule in PermissionService.denyReason (the server stays authoritative). */
 function canEdit(r, c) {
@@ -369,6 +445,7 @@ function setStyle(prop, value) {
   let blocked = 0
   for (let r = selection.r1; r <= selection.r2; r++) {
     for (let c = selection.c1; c <= selection.c2; c++) {
+      if (isCovered(r, c)) continue // styling follows the merge anchor, not its covered cells
       if (canEdit(r, c)) { blocked++; continue }
       const so = { ...(getStyle(r, c) || {}), [prop]: value }
       edits.push({ r, c, v: getRaw(r, c), s: so })
@@ -380,6 +457,190 @@ function setStyle(prop, value) {
   grid.value?.focus()
 }
 const toggleStyle = (prop) => setStyle(prop, activeStyle.value[prop] ? null : true)
+
+/** Adds or removes one decimal place on the active number format of every selected cell. */
+function stepDecimals(delta) {
+  const edits = []
+  let blocked = 0
+  for (let r = selection.r1; r <= selection.r2; r++) {
+    for (let c = selection.c1; c <= selection.c2; c++) {
+      if (isCovered(r, c)) continue
+      if (canEdit(r, c)) { blocked++; continue }
+      const so = getStyle(r, c) || {}
+      const fmt = adjustDecimals(so.fmt || '', delta)
+      edits.push({ r, c, v: getRaw(r, c), s: { ...so, fmt: fmt || null } })
+    }
+  }
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) skipped", [blocked]))
+  if (edits.length) applyEdits(edits)
+  grid.value?.focus()
+}
+function adjustDecimals(fmt, delta) {
+  const pct = fmt.endsWith('%')
+  const core = pct ? fmt.slice(0, -1) : fmt
+  const grouping = core.includes(',')
+  const current = core.includes('.') ? core.split('.')[1].length : 0
+  const next = Math.max(0, Math.min(10, current + delta))
+  const base = grouping ? '#,##0' : '0'
+  const out = base + (next > 0 ? '.' + '0'.repeat(next) : '')
+  return pct ? out + '%' : out
+}
+
+function clearFormatting() {
+  const edits = []
+  let blocked = 0
+  for (let r = selection.r1; r <= selection.r2; r++) {
+    for (let c = selection.c1; c <= selection.c2; c++) {
+      if (isCovered(r, c)) continue
+      if (canEdit(r, c)) { blocked++; continue }
+      if (getStyle(r, c)) edits.push({ r, c, v: getRaw(r, c), s: null })
+    }
+  }
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) skipped", [blocked]))
+  if (edits.length) applyEdits(edits)
+  grid.value?.focus()
+}
+
+// ------------------------------------------------------------------ merge / unmerge
+function mergeSelection(center = false) {
+  // Union the selection with any merge it overlaps, so partial selections still merge cleanly.
+  let { r1, r2, c1, c2 } = selection
+  for (let i = 0; i < 20; i++) {
+    let grew = false
+    for (const a of merges.value) {
+      if (a.r <= r2 && a.r + a.rs - 1 >= r1 && a.c <= c2 && a.c + a.cs - 1 >= c1) {
+        if (a.r < r1) { r1 = a.r; grew = true }
+        if (a.r + a.rs - 1 > r2) { r2 = a.r + a.rs - 1; grew = true }
+        if (a.c < c1) { c1 = a.c; grew = true }
+        if (a.c + a.cs - 1 > c2) { c2 = a.c + a.cs - 1; grew = true }
+      }
+    }
+    if (!grew) break
+  }
+  const rs = r2 - r1 + 1, cs = c2 - c1 + 1
+  if (rs < 2 && cs < 2) return
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+    if (canEdit(r, c)) return ElMessage.warning(tr("Can't merge: the range contains read-only cells"))
+  }
+  const covered = []
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+    if (r === r1 && c === c1) continue
+    if (getRaw(r, c) !== null || getStyle(r, c)) covered.push([r, c])
+  }
+  const finish = () => {
+    const edits = []
+    const anchorStyle = { ...(getStyle(r1, c1) || {}), m: [rs, cs] }
+    if (center) anchorStyle.al = 'center'
+    edits.push({ r: r1, c: c1, v: getRaw(r1, c1), s: anchorStyle })
+    for (const [r, c] of covered) edits.push({ r, c, v: null, s: null })
+    applyEdits(edits)
+    grid.value?.select(r1, c1)
+  }
+  const discards = covered.filter(([r, c]) => getRaw(r, c) !== null).length
+  if (discards) {
+    ElMessageBox.confirm(tr("Merging keeps only the top-left value and clears {0} other cell(s). Continue?", [discards]),
+      tr("Merge cells"), { type: 'warning' }).then(finish).catch(() => {})
+  } else finish()
+}
+function unmergeSelection() {
+  const edits = []
+  const seen = new Set()
+  for (let r = selection.r1; r <= selection.r2; r++) {
+    for (let c = selection.c1; c <= selection.c2; c++) {
+      const a = mergeAt(r, c)
+      if (!a || seen.has(a.r + ',' + a.c)) continue
+      seen.add(a.r + ',' + a.c)
+      if (canEdit(a.r, a.c)) continue
+      const s = { ...(getStyle(a.r, a.c) || {}) }
+      delete s.m
+      edits.push({ r: a.r, c: a.c, v: getRaw(a.r, a.c), s })
+    }
+  }
+  if (edits.length) applyEdits(edits)
+  grid.value?.focus()
+}
+const selMerged = computed(() => { void renderKey.value; return !!mergeAt(selection.r, selection.c) })
+function onMerge(cmd) {
+  if (cmd === 'unmerge') return unmergeSelection()
+  mergeSelection(cmd === 'merge-center')
+}
+
+// ------------------------------------------------------------------ find & replace
+const findOpen = ref(false)
+const findText = ref('')
+const replaceText = ref('')
+const findCase = ref(false)
+const matchIndex = ref(-1)
+const matches = computed(() => {
+  void renderKey.value
+  const q = findText.value
+  if (!findOpen.value || !q) return []
+  const needle = findCase.value ? q : q.toLowerCase()
+  const out = []
+  for (const [k, cell] of cells.value) {
+    const raw = cell.v
+    if (raw == null) continue
+    const hay = findCase.value ? raw : raw.toLowerCase()
+    if (hay.includes(needle)) {
+      const [r, c] = k.split(',').map(Number)
+      out.push({ r, c })
+    }
+  }
+  out.sort((a, b) => a.r - b.r || a.c - b.c)
+  return out
+})
+function openFind() {
+  findOpen.value = true
+  if (refLabel.value) { /* keep */ }
+  nextTick(() => findInput.value?.focus?.())
+}
+function closeFind() {
+  findOpen.value = false
+  matchIndex.value = -1
+  grid.value?.focus()
+}
+function gotoMatch(i) {
+  const list = matches.value
+  if (!list.length) { matchIndex.value = -1; return ElMessage.info(tr("No matches")) }
+  matchIndex.value = ((i % list.length) + list.length) % list.length
+  const m = list[matchIndex.value]
+  grid.value?.select(m.r, m.c)
+}
+const findNext = () => gotoMatch(matchIndex.value + 1)
+const findPrev = () => gotoMatch(matchIndex.value - 1)
+function replaceCurrent() {
+  const list = matches.value
+  if (!list.length) return ElMessage.info(tr("No matches"))
+  let i = matchIndex.value
+  if (i < 0 || i >= list.length) i = 0
+  const m = list[i]
+  if (canEdit(m.r, m.c)) { ElMessage.warning(tr("Read-only cell")); return findNext() }
+  const raw = getRaw(m.r, m.c) ?? ''
+  const next = replaceAll(raw, findText.value, replaceText.value, findCase.value)
+  if (next !== raw) applyEdits([{ r: m.r, c: m.c, v: next, s: getStyle(m.r, m.c) }])
+  nextTick(() => gotoMatch(matchIndex.value)) // matches recompute; stay at the same spot
+}
+function replaceAllMatches() {
+  const list = matches.value
+  if (!list.length) return ElMessage.info(tr("No matches"))
+  const edits = []
+  let blocked = 0
+  for (const m of list) {
+    if (canEdit(m.r, m.c)) { blocked++; continue }
+    const raw = getRaw(m.r, m.c) ?? ''
+    const next = replaceAll(raw, findText.value, replaceText.value, findCase.value)
+    if (next !== raw) edits.push({ r: m.r, c: m.c, v: next, s: getStyle(m.r, m.c) })
+  }
+  if (blocked) ElMessage.warning(tr("{0} read-only cell(s) skipped", [blocked]))
+  if (edits.length) { applyEdits(edits); ElMessage.success(tr("Replaced in {0} cell(s)", [edits.length])) }
+  else ElMessage.info(tr("Nothing to replace"))
+}
+function replaceAll(text, find, repl, caseSensitive) {
+  if (!find) return text
+  if (caseSensitive) return text.split(find).join(repl)
+  const re = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  return text.replace(re, repl)
+}
 
 // ------------------------------------------------------------------ selection & formula bar
 const refLabel = computed(() => {
@@ -462,6 +723,11 @@ async function onGridAction(action, sel) {
     case 'italic': return toggleStyle('i')
     case 'history': return openHistory({ r: sel.r, c: sel.c })
     case 'column': return openColumn(sel.c)
+    case 'merge': return mergeSelection(false)
+    case 'merge-center': return mergeSelection(true)
+    case 'unmerge': return unmergeSelection()
+    case 'clear-format': return clearFormatting()
+    case 'find': return openFind()
     case 'insert-row-above': return structure('INSERT_ROWS', sel.r1, sel.r2 - sel.r1 + 1)
     case 'insert-row-below': return structure('INSERT_ROWS', sel.r2 + 1, sel.r2 - sel.r1 + 1)
     case 'insert-col-left': return structure('INSERT_COLS', sel.c1, sel.c2 - sel.c1 + 1)
@@ -514,6 +780,49 @@ async function onMore(cmd) {
 function switchTab(id) {
   if (id === sheet.value?.id) return
   router.push({ name: 'sheet', params: { id: String(id) } })
+}
+
+// ------------------------------------------------------------------ worksheet tabs
+const canManageTabs = computed(() => isOwner.value && auth.canCreate)
+const displayTabs = computed(() => {
+  const t = sheet.value?.tabs ?? []
+  if (t.length) return t
+  return sheet.value ? [{ id: sheet.value.id, name: sheet.value.tabName || tr('Sheet 1'), index: 0 }] : []
+})
+const showTabBar = computed(() => (sheet.value?.tabs?.length > 1) || canManageTabs.value)
+async function addTab() {
+  const detail = await api.post(`/sheets/${sheet.value.id}/tabs`, { clientId: CLIENT_ID })
+  ElMessage.success(tr("Worksheet added"))
+  router.push({ name: 'sheet', params: { id: String(detail.id) } })
+}
+async function renameTab(tab) {
+  if (!canManageTabs.value) return
+  try {
+    const { value } = await ElMessageBox.prompt(tr("Worksheet name"), tr("Rename worksheet"),
+      { inputValue: tab.name || '', inputValidator: (v) => (v && v.trim().length <= 100) || tr("Enter 1–100 characters") })
+    await api.put(`/sheets/${tab.id}/tab`, { name: value.trim(), clientId: CLIENT_ID })
+    if (tab.id === sheet.value.id) await reload(); else refreshTabs()
+  } catch { /* cancelled */ }
+}
+async function deleteTab(tab) {
+  if (!canManageTabs.value) return
+  const tabs = sheet.value?.tabs ?? []
+  if (tabs.length <= 1) return ElMessage.info(tr("A workbook needs at least one worksheet"))
+  try {
+    await ElMessageBox.confirm(tr("Delete worksheet \"{0}\" and its history? This cannot be undone.", [tab.name]),
+      tr("Delete worksheet"), { type: 'warning', confirmButtonText: tr("Delete") })
+    const res = await api.delete(`/sheets/${tab.id}/tab`)
+    if (tab.id === sheet.value.id) router.push({ name: 'sheet', params: { id: String(res.id) } })
+    else refreshTabs()
+    ElMessage.success(tr("Worksheet deleted"))
+  } catch { /* cancelled */ }
+}
+async function refreshTabs() {
+  // another tab changed; refresh just the tab list without disturbing the open grid
+  try {
+    const d = await api.get(`/sheets/${sheet.value.id}`, { silent: true })
+    sheet.value.tabs = d.tabs
+  } catch { /* ignore */ }
 }
 async function saveSettings() {
   const detail = await api.put(`/sheets/${sheet.value.id}`, settings)
@@ -595,15 +904,23 @@ async function open(id) {
 }
 watch(() => props.id, open, { immediate: true })
 
+function onGlobalKey(e) {
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); openFind() }
+  else if (e.key === 'Escape' && findOpen.value) closeFind()
+}
+onMounted(() => window.addEventListener('keydown', onGlobalKey))
+
 onBeforeUnmount(() => {
   unsubscribeSheet?.()
   stopConn()
   clearTimeout(reloadTimer)
+  window.removeEventListener('keydown', onGlobalKey)
 })
 </script>
 
 <style scoped>
-.editor { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel); }
+.editor { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel); }
 .title-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px 6px; gap: 12px; flex-wrap: wrap; }
 .title-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .title-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -623,10 +940,20 @@ onBeforeUnmount(() => {
 .formula-bar .fx { font-style: italic; color: var(--text-2); font-weight: 600; }
 .fx-input { flex: 1; }
 .fx-input :deep(input) { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.tab-bar { display: flex; gap: 2px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--grid-head); overflow-x: auto; scrollbar-width: thin; }
-.tab-bar .tab { flex: none; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 14px; font: inherit; font-size: 12px; color: var(--text-2); background: transparent; border: 1px solid transparent; border-top: none; border-radius: 0 0 6px 6px; cursor: pointer; }
+.tab-bar { display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-top: 1px solid var(--border); background: var(--grid-head); overflow-x: auto; scrollbar-width: thin; }
+.tab-bar .tab { display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 220px; white-space: nowrap; padding: 5px 12px; font: inherit; font-size: 12px; color: var(--text-2); background: transparent; border: 1px solid transparent; border-top: none; border-radius: 0 0 6px 6px; cursor: pointer; }
+.tab-bar .tab .tab-label { overflow: hidden; text-overflow: ellipsis; }
 .tab-bar .tab:hover { background: var(--hover); color: var(--text-1); }
 .tab-bar .tab.active { background: var(--panel); color: var(--text-1); font-weight: 600; border-color: var(--border); box-shadow: inset 0 2px 0 var(--el-color-primary); }
+.tab-bar .tab-close { font-size: 12px; border-radius: 3px; padding: 1px; color: var(--text-3); }
+.tab-bar .tab-close:hover { background: var(--danger); color: #fff; }
+.tab-bar .tab-add { flex: none; padding: 4px 8px; background: transparent; border: none; color: var(--text-2); cursor: pointer; border-radius: 0 0 6px 6px; }
+.tab-bar .tab-add:hover { background: var(--hover); color: var(--text-1); }
+.toolbar .dec { font-variant-numeric: tabular-nums; font-size: 12px; }
+.find-panel { position: absolute; top: 96px; right: 24px; z-index: 30; width: 340px; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
+.find-panel .find-row { display: flex; align-items: center; gap: 6px; }
+.find-panel .find-row .el-input { flex: 1; }
+.find-panel .find-count { font-size: 12px; color: var(--text-2); white-space: nowrap; min-width: 48px; text-align: center; }
 .status-bar { display: flex; gap: 16px; padding: 4px 16px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--border); background: var(--grid-head); }
 .status-bar .remote { color: var(--warn-text); }
 .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-right: 4px; }

@@ -8,11 +8,14 @@ import com.factory.collab.dto.TemplateDefinition;
 import com.factory.collab.messaging.EventPublisher;
 import com.factory.collab.messaging.SheetEvent;
 import com.factory.collab.repo.*;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
 import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -115,6 +118,33 @@ public class ImportExportService {
                 maxCol = Math.max(maxCol, c.getColumnIndex());
             }
         }
+        // Carry merged regions over onto their top-left (anchor) cell's style.
+        Map<String, int[]> anchorMerge = new HashMap<>();
+        for (CellRangeAddress region : ws.getMergedRegions()) {
+            int fr = region.getFirstRow(), fc = region.getFirstColumn();
+            int rs = region.getLastRow() - fr + 1, cs = region.getLastColumn() - fc + 1;
+            if ((rs <= 1 && cs <= 1) || fr >= maxRows || fc >= maxCols) continue;
+            anchorMerge.put(fr + "," + fc, new int[]{rs, Math.min(cs, maxCols - fc)});
+        }
+        if (!anchorMerge.isEmpty()) {
+            Set<String> present = new HashSet<>();
+            for (int i = 0; i < cells.size(); i++) {
+                CellDto cd = cells.get(i);
+                String k = cd.r() + "," + cd.c();
+                present.add(k);
+                int[] m = anchorMerge.get(k);
+                if (m != null) cells.set(i, new CellDto(cd.r(), cd.c(), cd.v(), withMerge(cd.s(), m)));
+            }
+            for (var e : anchorMerge.entrySet()) {
+                if (present.contains(e.getKey())) continue; // a merged region whose anchor was empty
+                String[] p = e.getKey().split(",");
+                int r = Integer.parseInt(p[0]), c = Integer.parseInt(p[1]);
+                cells.add(new CellDto(r, c, null, withMerge(null, e.getValue())));
+                maxRow = Math.max(maxRow, r);
+                maxCol = Math.max(maxCol, c);
+            }
+        }
+
         int cols = Math.max(maxCol + 1, 8);
         List<ColumnDto> columns = new ArrayList<>();
         for (int c = 0; c <= maxCol; c++) {
@@ -209,7 +239,18 @@ public class ImportExportService {
             Row row = Optional.ofNullable(ws.getRow(cell.getRowIdx())).orElseGet(() -> ws.createRow(cell.getRowIdx()));
             org.apache.poi.ss.usermodel.Cell xc = row.createCell(cell.getColIdx());
             writeValue(xc, cell.getRawValue());
-            if (cell.getStyle() != null) xc.setCellStyle(styleCache.computeIfAbsent(cell.getStyle(), s -> toPoiStyle(wb, s)));
+            if (cell.getStyle() != null) {
+                xc.setCellStyle(styleCache.computeIfAbsent(cell.getStyle(), s -> toPoiStyle(wb, s)));
+                int[] m = mergeSpan(cell.getStyle());
+                if (m != null) {
+                    try {
+                        ws.addMergedRegion(new CellRangeAddress(cell.getRowIdx(), cell.getRowIdx() + m[0] - 1,
+                                cell.getColIdx(), cell.getColIdx() + m[1] - 1));
+                    } catch (IllegalStateException ignored) {
+                        // Overlapping region (shouldn't happen): skip the merge, keep the value.
+                    }
+                }
+            }
         }
         for (var col : columnRepository.findBySheetIdOrderByColIndex(sheetId)) {
             if (col.getWidth() != null) ws.setColumnWidth(col.getColIndex(), Math.min(255 * 256, (int) (col.getWidth() / 7.5 * 256)));
@@ -265,6 +306,33 @@ public class ImportExportService {
             }
         } catch (IOException ignored) { }
         return cs;
+    }
+
+    /** Adds {@code "m":[rows,cols]} to a style JSON string (which may be null/empty). */
+    private String withMerge(String style, int[] span) {
+        try {
+            ObjectNode node = (style == null || style.isBlank())
+                    ? mapper.createObjectNode() : (ObjectNode) mapper.readTree(style);
+            ArrayNode arr = node.putArray("m");
+            arr.add(span[0]);
+            arr.add(span[1]);
+            return node.toString();
+        } catch (Exception e) {
+            return style;
+        }
+    }
+
+    /** Reads {@code "m":[rows,cols]} from a style JSON string, or null when the cell is not a merge anchor. */
+    private int[] mergeSpan(String style) {
+        if (style == null || !style.contains("\"m\"")) return null;
+        try {
+            JsonNode m = mapper.readTree(style).get("m");
+            if (m != null && m.isArray() && m.size() == 2) {
+                int rs = Math.max(1, m.get(0).asInt()), cs = Math.max(1, m.get(1).asInt());
+                if (rs > 1 || cs > 1) return new int[]{rs, cs};
+            }
+        } catch (IOException ignored) { }
+        return null;
     }
 
     private static String safeSheetName(String name) {
