@@ -354,6 +354,99 @@ public class SheetService {
         return detailOf(sheet, level, user);
     }
 
+    // ------------------------------------------------------------------ worksheet tabs
+
+    /** Adds a blank worksheet to the sheet's workbook, converting a standalone sheet into a workbook if needed. */
+    @Transactional
+    public SheetDetail addTab(Long id, String name, AuthUser user) {
+        Sheet anchor = lock(id);
+        permissions.require(user, anchor, AccessLevel.OWNER);
+        requireCreator(user);
+        List<Sheet> tabs = tabsOf(anchor);
+        Long workbookId;
+        if (!anchor.inWorkbook()) {
+            anchor.setWorkbookId(anchor.getId());
+            if (anchor.getTabName() == null) anchor.setTabName("Sheet 1");
+            anchor.setTabIndex(0);
+            sheetRepository.save(anchor);
+            workbookId = anchor.getId();
+            tabs = List.of(anchor);
+        } else {
+            workbookId = anchor.getWorkbookId();
+        }
+        int nextIndex = tabs.stream().mapToInt(Sheet::getTabIndex).max().orElse(-1) + 1;
+        String tabName = uniqueTabName(name == null || name.isBlank() ? "Sheet " + (nextIndex + 1) : name.trim(), tabs);
+
+        TemplateDefinition def = new TemplateDefinition(clamp(100, 1, maxRows), clamp(12, 1, maxCols), 1, List.of(), List.of());
+        Sheet tab = createFromDefinition(anchor.getName(), anchor.getDescription(), anchor.getOwnerDepartment(), null, def, user);
+        tab.setWorkbookId(workbookId);
+        tab.setTabName(tabName);
+        tab.setTabIndex(nextIndex);
+        sheetRepository.save(tab);
+
+        // The whole workbook shares one set of grants and followers, so mirror the anchor's.
+        for (SheetPermission p : permissionRepository.findBySheetId(anchor.getId())) {
+            permissionRepository.save(new SheetPermission(tab.getId(), p.getDepartment(), p.getLevel()));
+        }
+        for (SheetSubscription s : subscriptionRepository.findBySheetId(anchor.getId())) {
+            subscriptionRepository.save(new SheetSubscription(tab.getId(), s.getUserId()));
+        }
+        publish(anchor, SheetEvent.Type.META_CHANGED, user, null); // open viewers reload and see the new tab
+        return detailOf(tab, permissions.levelFor(user, tab), user);
+    }
+
+    @Transactional
+    public SheetDetail renameTab(Long id, String name, AuthUser user) {
+        Sheet sheet = lock(id);
+        AccessLevel level = permissions.require(user, sheet, AccessLevel.OWNER);
+        if (!sheet.inWorkbook()) throw ApiException.badRequest("Add a second worksheet before naming it");
+        if (name == null || name.isBlank()) throw ApiException.badRequest("A worksheet name is required");
+        List<Sheet> others = tabsOf(sheet).stream().filter(t -> !t.getId().equals(id)).toList();
+        sheet.setTabName(uniqueTabName(SheetLabels.truncate(name.trim(), 100), others));
+        sheet.touch();
+        sheetRepository.save(sheet);
+        publish(sheet, SheetEvent.Type.META_CHANGED, user, null);
+        return detailOf(sheet, level, user);
+    }
+
+    /** Deletes one worksheet of a workbook (reindexing the rest), unlike {@link #delete} which drops the whole workbook. */
+    @Transactional
+    public SheetDetail deleteTab(Long id, AuthUser user) {
+        Sheet target = lock(id);
+        permissions.require(user, target, AccessLevel.OWNER);
+        if (!target.inWorkbook()) throw ApiException.badRequest("This is not a workbook worksheet");
+        List<Sheet> tabs = tabsOf(target);
+        if (tabs.size() <= 1) throw ApiException.badRequest("A workbook must keep at least one worksheet");
+        Long workbookId = target.getWorkbookId();
+        List<Sheet> remaining = tabs.stream().filter(t -> !t.getId().equals(id))
+                .sorted(Comparator.comparingInt(Sheet::getTabIndex)).collect(Collectors.toList());
+
+        publish(target, SheetEvent.Type.SHEET_DELETED, user, null);
+        sheetRepository.delete(target);
+
+        Long newWorkbookId = workbookId.equals(id) ? remaining.get(0).getId() : workbookId;
+        boolean collapse = remaining.size() == 1; // a lone survivor becomes a standalone sheet again
+        for (int i = 0; i < remaining.size(); i++) {
+            Sheet t = remaining.get(i);
+            if (collapse) { t.setWorkbookId(null); t.setTabName(null); t.setTabIndex(0); }
+            else { t.setWorkbookId(newWorkbookId); t.setTabIndex(i); }
+            t.touch();
+        }
+        sheetRepository.saveAll(remaining);
+        Sheet first = remaining.get(0);
+        publish(first, SheetEvent.Type.META_CHANGED, user, null);
+        return detailOf(first, permissions.levelFor(user, first), user);
+    }
+
+    private static String uniqueTabName(String desired, List<Sheet> existing) {
+        Set<String> taken = new HashSet<>();
+        for (Sheet t : existing) if (t.getTabName() != null) taken.add(t.getTabName());
+        String base = SheetLabels.truncate(desired, 100);
+        String candidate = base;
+        for (int n = 2; taken.contains(candidate); n++) candidate = SheetLabels.truncate(base, 96) + " (" + n + ")";
+        return candidate;
+    }
+
     private void rewriteFormulas(Long sheetId, Function<String, String> fn) {
         List<Cell> formulas = cellRepository.findFormulaCells(sheetId);
         for (Cell c : formulas) {

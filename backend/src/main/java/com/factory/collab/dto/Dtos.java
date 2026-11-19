@@ -133,6 +133,10 @@ public final class Dtos {
             boolean watched, List<String> editDepartments) {
     }
 
+    /** Add a worksheet (name optional, auto-generated when blank) or rename one. */
+    public record TabRequest(@Size(max = 100) String name, String clientId) {
+    }
+
     public record ColumnWidthRequest(@Min(30) @Max(1000) int width) {
     }
 

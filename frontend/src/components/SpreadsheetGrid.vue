@@ -50,6 +50,11 @@
       </tbody>
     </table>
 
+    <!-- merged regions are drawn as an overlay so they survive row virtualisation and frozen headers -->
+    <div class="merge-layer">
+      <div v-for="m in visibleMerges" :key="m.key" class="merge-cell" :class="m.cls" :style="m.style">{{ m.text }}</div>
+    </div>
+
     <!-- selection rectangle -->
     <div class="sel-box" :style="selBoxStyle"></div>
 
@@ -97,7 +102,9 @@ const props = defineProps({
   canEdit: { type: Function, required: true }, // (r,c) => null | reason
   flashes: { type: Object, default: () => ({}) }, // "r,c" -> { by }
   renderKey: { type: Number, default: 0 }, // bump to force re-render after data changes
-  canStructure: { type: Object, default: () => ({ rows: false, cols: false }) }
+  canStructure: { type: Object, default: () => ({ rows: false, cols: false }) },
+  merges: { type: Array, default: () => [] }, // [{ r, c, rs, cs }] anchor + span of every merged region
+  mergeAt: { type: Function, default: () => null } // (r,c) => region containing the cell, or null
 })
 const emit = defineEmits(['edit', 'select', 'resize-col', 'resize-col-preview', 'action'])
 
@@ -180,6 +187,7 @@ const inputStyle = computed(() => {
 // ------------------------------------------------------------------ rendering helpers
 function text(r, c) {
   void props.renderKey
+  if (props.mergeAt(r, c)) return '' // merged cells are rendered by the overlay below
   return props.getDisplay(r, c).text
 }
 function cellAttrs(r, c) {
@@ -218,13 +226,89 @@ function isLight(hex) {
 const inSelCol = (c) => c >= range.value.c1 && c <= range.value.c2
 const inSelRow = (r) => r >= range.value.r1 && r <= range.value.r2
 
+// ------------------------------------------------------------------ merged regions (overlay)
+function mergeVisualStyle(s, kind) {
+  const out = { background: 'var(--grid-bg)' }
+  if (s) {
+    if (s.b) out.fontWeight = '600'
+    if (s.i) out.fontStyle = 'italic'
+    if (s.bg) { out.background = s.bg; if (!s.fc) out.color = isLight(s.bg) ? '#1f2329' : '#f3f5f8' }
+    if (s.fc) out.color = s.fc
+  }
+  const al = s?.al || (kind === 'num' ? 'right' : 'left')
+  out.justifyContent = al === 'right' ? 'flex-end' : al === 'center' ? 'center' : 'flex-start'
+  return out
+}
+const visibleMerges = computed(() => {
+  void props.renderKey
+  const out = []
+  for (const a of props.merges) {
+    const inFrozen = a.r < frozenRows.value
+    const visibleBody = a.r + a.rs > startRow.value && a.r < endRow.value
+    if (!inFrozen && !visibleBody) continue
+    const d = props.getDisplay(a.r, a.c)
+    const s = props.getStyle(a.r, a.c)
+    const left = colOffsets.value[a.c]
+    const top = rowTop(a.r)
+    out.push({
+      key: a.r + ',' + a.c,
+      text: d.text,
+      cls: ['k-' + d.kind, r0InSel(a) ? 'in-sel' : null],
+      style: {
+        left: left + 'px',
+        top: top + 'px',
+        width: (colOffsets.value[a.c + a.cs] - left) + 'px',
+        height: (a.rs * ROW_H) + 'px',
+        zIndex: inFrozen ? 5 : 1,
+        ...mergeVisualStyle(s, d.kind)
+      }
+    })
+  }
+  return out
+})
+const r0InSel = (a) => a.r >= range.value.r1 && a.r <= range.value.r2 && a.c >= range.value.c1 && a.c <= range.value.c2
+const selHasMerge = computed(() => {
+  const { r1, r2, c1, c2 } = range.value
+  for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) if (props.mergeAt(r, c)) return true
+  return false
+})
+
 // ------------------------------------------------------------------ selection
 function setSel(r, c, extend = false) {
   r = Math.max(0, Math.min(props.rowCount - 1, r))
   c = Math.max(0, Math.min(props.colCount - 1, c))
-  if (extend) { sel.r2 = r; sel.c2 = c } else { sel.r = r; sel.c = c; sel.r2 = r; sel.c2 = c }
+  if (extend) {
+    sel.r2 = r; sel.c2 = c
+    expandSelToMerges()
+  } else {
+    const a = props.mergeAt(r, c)
+    if (a) { sel.r = a.r; sel.c = a.c; sel.r2 = a.r + a.rs - 1; sel.c2 = a.c + a.cs - 1 }
+    else { sel.r = r; sel.c = c; sel.r2 = r; sel.c2 = c }
+  }
   emit('select', { ...sel, ...range.value })
   ensureVisible(extend ? r : sel.r, extend ? c : sel.c)
+}
+/** Grow the current rectangle until no merged region straddles its edges (so whole blocks select together). */
+function expandSelToMerges() {
+  if (!props.merges.length) return
+  let { r1, r2, c1, c2 } = range.value
+  for (let i = 0; i < 20; i++) {
+    let grew = false
+    for (const a of props.merges) {
+      if (a.r <= r2 && a.r + a.rs - 1 >= r1 && a.c <= c2 && a.c + a.cs - 1 >= c1) {
+        if (a.r < r1) { r1 = a.r; grew = true }
+        if (a.r + a.rs - 1 > r2) { r2 = a.r + a.rs - 1; grew = true }
+        if (a.c < c1) { c1 = a.c; grew = true }
+        if (a.c + a.cs - 1 > c2) { c2 = a.c + a.cs - 1; grew = true }
+      }
+    }
+    if (!grew) break
+  }
+  // keep the anchor (sel.r/sel.c) as a real corner of the rectangle
+  sel.r = sel.r <= sel.r2 ? r1 : r2
+  sel.c = sel.c <= sel.c2 ? c1 : c2
+  sel.r2 = sel.r === r1 ? r2 : r1
+  sel.c2 = sel.c === c1 ? c2 : c1
 }
 function ensureVisible(r, c) {
   const el = scroller.value
@@ -363,6 +447,7 @@ function onKeyDown(e) {
     emit('action', k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'y' ? 'redo' : k === 'b' ? 'bold' : 'italic')
     return
   }
+  if (mod && e.key.toLowerCase() === 'f') { e.preventDefault(); emit('action', 'find'); return }
   if (mod) return // let copy/cut/paste events fire
   switch (e.key) {
     case 'ArrowUp': case 'ArrowDown': case 'ArrowLeft': case 'ArrowRight':
@@ -387,10 +472,19 @@ function onKeyDown(e) {
   // printable characters fall through into the textarea and trigger onInput -> startEdit
 }
 function move(key, extend) {
-  const r = extend ? sel.r2 : sel.r
-  const c = extend ? sel.c2 : sel.c
   const d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[key]
-  setSel(r + d[0], c + d[1], extend)
+  if (!extend) {
+    // step out of a merged region as a whole, landing just past its edge
+    const a = props.mergeAt(sel.r, sel.c)
+    if (a) {
+      if (key === 'ArrowDown') return setSel(a.r + a.rs, a.c)
+      if (key === 'ArrowUp') return setSel(a.r - 1, a.c)
+      if (key === 'ArrowRight') return setSel(a.r, a.c + a.cs)
+      return setSel(a.r, a.c - 1)
+    }
+    return setSel(sel.r + d[0], sel.c + d[1])
+  }
+  setSel(sel.r2 + d[0], sel.c2 + d[1], true)
 }
 
 function selectionCells() {
@@ -519,6 +613,11 @@ const menuItems = computed(() => {
     { key: 'insert-col-right', label: tr("Insert {0} column(s) right", [nc]), disabled: !props.canStructure.cols },
     { key: 'delete-cols', label: tr("Delete column(s) {0}–{1}", [colName(c1), colName(c2)]), disabled: !props.canStructure.cols },
     { key: 'd3', divider: true },
+    { key: 'merge', label: tr("Merge cells"), disabled: nr * nc < 2 },
+    { key: 'merge-center', label: tr("Merge & center"), disabled: nr * nc < 2 },
+    { key: 'unmerge', label: tr("Unmerge cells"), disabled: !selHasMerge.value },
+    { key: 'd4', divider: true },
+    { key: 'clear-format', label: tr("Clear formatting") },
     { key: 'clear', label: tr("Clear contents") }
   ]
 })
@@ -659,6 +758,25 @@ td.pad { border: 0; padding: 0; }
   z-index: 2;
   box-sizing: border-box;
 }
+.merge-layer { position: absolute; top: 0; left: 0; pointer-events: none; }
+.merge-cell {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text-1);
+  border-right: 1px solid var(--grid-line);
+  border-bottom: 1px solid var(--grid-line);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.merge-cell.in-sel { box-shadow: inset 0 0 0 9999px var(--sel-tint); }
+.merge-cell.k-err { color: var(--danger); justify-content: center; }
+.merge-cell.k-bool { justify-content: center; }
 .cell-input {
   position: absolute;
   z-index: 6;
