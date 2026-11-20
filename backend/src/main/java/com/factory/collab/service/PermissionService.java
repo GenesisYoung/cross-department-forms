@@ -1,5 +1,6 @@
 package com.factory.collab.service;
 
+import com.factory.collab.i18n.Messages;
 import com.factory.collab.config.ApiException;
 import com.factory.collab.config.AuthUser;
 import com.factory.collab.domain.*;
@@ -67,7 +68,7 @@ public class PermissionService {
         AccessLevel level = levelFor(user, sheet);
         if (level == AccessLevel.NONE) throw ApiException.notFound("Sheet");
         if (!level.atLeast(needed)) {
-            throw ApiException.forbidden("This action needs " + needed + " access to '" + sheet.getName() + "'");
+            throw ApiException.forbidden("error.accessRequired", Messages.text("level." + needed), sheet.getName());
         }
         return level;
     }
@@ -75,12 +76,12 @@ public class PermissionService {
     /** Null if the edit is allowed, otherwise a human-readable reason. */
     public String denyReason(AccessLevel level, String userDeptCode, Sheet sheet, SheetColumn column, int row) {
         if (level == AccessLevel.OWNER) return null;
-        if (row < sheet.getHeaderRows()) return "header rows can only be edited by the sheet owner";
+        if (row < sheet.getHeaderRows()) return Messages.text("deny.header");
         List<String> colDepts = column == null ? List.of() : column.editDepartmentList();
         if (!colDepts.isEmpty()) {
-            return colDepts.contains(userDeptCode) ? null : "this column is reserved for " + String.join(", ", colDepts);
+            return colDepts.contains(userDeptCode) ? null : Messages.text("deny.column", String.join(", ", colDepts));
         }
-        return level.atLeast(AccessLevel.EDIT) ? null : "your department has view-only access";
+        return level.atLeast(AccessLevel.EDIT) ? null : Messages.text("deny.view");
     }
 
     /** Departments that can see the sheet: the owner plus every department granted VIEW or EDIT. */

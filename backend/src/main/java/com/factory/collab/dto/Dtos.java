@@ -1,5 +1,9 @@
 package com.factory.collab.dto;
 
+import com.factory.collab.i18n.Messages;
+import com.factory.collab.i18n.NotificationTexts;
+import org.springframework.context.i18n.LocaleContextHolder;
+import java.util.Map;
 import java.time.Instant;
 import java.util.List;
 
@@ -150,7 +154,7 @@ public final class Dtos {
     public record ChangeDto(Long id, Long sheetId, String sheetName, String batchId, int row, int col, String cellRef,
             String columnLabel, String rowLabel, String oldValue, String newValue, boolean watched,
             String userName, String departmentCode, String departmentName, Instant changedAt,
-            List<AckDto> acknowledgements) {
+            List<AckDto> acknowledgements, Map<String, String> rowLabelTranslations) {
     }
 
     /**
@@ -163,11 +167,16 @@ public final class Dtos {
     // ---------- notifications ----------
     public record NotificationDto(Long id, Long sheetId, String batchId, Notification.Type type,
             Notification.Severity severity, String title, String message,
-            String actorName, String actorDepartment, Instant createdAt, Instant readAt) {
+            String actorName, String actorDepartment, Instant createdAt, Instant readAt,
+            Map<String, NotificationTexts.Text> translations) {
         public static NotificationDto of(Notification n) {
+            var translations = NotificationTexts.all(n);
+            var text = translations.getOrDefault(Messages.resolve(
+                    LocaleContextHolder.getLocale().toLanguageTag()).toLanguageTag(),
+                    new NotificationTexts.Text(n.getTitle(), n.getMessage()));
             return new NotificationDto(n.getId(), n.getSheetId(), n.getBatchId(), n.getType(), n.getSeverity(),
-                    n.getTitle(), n.getMessage(), n.getActorName(), n.getActorDepartment(), n.getCreatedAt(),
-                    n.getReadAt());
+                    text.title(), text.message(), n.getActorName(), n.getActorDepartment(), n.getCreatedAt(),
+                    n.getReadAt(), translations);
         }
     }
 

@@ -43,6 +43,10 @@ public class Notification {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
+    /** Immutable language snapshots: background workers must not inherit the editor's language. */
+    @Column(name = "localized_text", columnDefinition = "LONGTEXT")
+    private String localizedText;
+
     @Column(name = "actor_name", length = 100)
     private String actorName;
 

@@ -25,9 +25,7 @@ public class ExcelWorkbookReader {
             return WorkbookFactory.create(input);
         } catch (IOException e) {
             if (e.getMessage() != null && e.getMessage().contains("MAX_FILE_COUNT:")) {
-                throw ApiException.badRequest("Excel 文件内部条目数超过上限 "
-                        + ZipSecureFile.getMaxFileCount()
-                        + "，此限制与表单行数无关。请精简文件，或调整 collab.excel.max-file-count 后重启后端。");
+                throw ApiException.badRequest("error.excelEntries", ZipSecureFile.getMaxFileCount());
             }
             throw e;
         }

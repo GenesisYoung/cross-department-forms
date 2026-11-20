@@ -1,6 +1,9 @@
 package com.factory.collab.service;
 
 import com.factory.collab.config.ApiException;
+import com.factory.collab.i18n.Messages;
+import com.factory.collab.i18n.NotificationTexts;
+import java.util.function.Function;
 import com.factory.collab.config.AuthUser;
 import com.factory.collab.domain.*;
 import com.factory.collab.dto.Dtos.NotificationCount;
@@ -51,7 +54,7 @@ public class NotificationService {
         List<Notification> created = switch (e.type()) {
             case CELLS_UPDATED -> forCellChanges(sheet, e);
             case STRUCTURE_CHANGED -> forSubscribers(sheet, e, Notification.Type.STRUCTURE_CHANGED,
-                    "Layout changed in " + sheet.label(), describeStructure(e));
+                    l -> new NotificationTexts.Text(Messages.text(l, "notice.layout", sheet.label()), describeStructure(e, l)));
             case SHEET_SHARED -> forShare(sheet, e);
             default -> List.of();
         };
@@ -77,28 +80,28 @@ public class NotificationService {
         notified.add(e.actorId());
 
         if (!watched.isEmpty()) {
-            String title = "⚠ " + watched.size() + " key change" + (watched.size() > 1 ? "s" : "") + " in " + sheet.label();
-            String body = describeChanges(watched);
+            Function<Locale, NotificationTexts.Text> content = l -> new NotificationTexts.Text(
+                    Messages.text(l, watched.size() == 1 ? "notice.key.one" : "notice.key.many", watched.size(), sheet.label()), describeChanges(watched, l));
             for (User u : userRepository.findByDepartmentIdInAndEnabledTrue(permissions.departmentsWithAccess(sheet))) {
                 if (notified.add(u.getId())) {
-                    out.add(build(u.getId(), sheet, e, Notification.Type.CELLS_CHANGED, Notification.Severity.IMPORTANT, title, body));
+                    out.add(build(u.getId(), sheet, e, Notification.Type.CELLS_CHANGED, Notification.Severity.IMPORTANT, content));
                 }
             }
         }
-        String title = valueChanges.size() + " cell" + (valueChanges.size() > 1 ? "s" : "") + " updated in " + sheet.label();
-        String body = describeChanges(valueChanges);
+        Function<Locale, NotificationTexts.Text> content = l -> new NotificationTexts.Text(
+                Messages.text(l, valueChanges.size() == 1 ? "notice.cells.one" : "notice.cells.many", valueChanges.size(), sheet.label()), describeChanges(valueChanges, l));
         for (User u : subscribers(sheet)) {
             if (notified.add(u.getId())) {
-                out.add(build(u.getId(), sheet, e, Notification.Type.CELLS_CHANGED, Notification.Severity.INFO, title, body));
+                out.add(build(u.getId(), sheet, e, Notification.Type.CELLS_CHANGED, Notification.Severity.INFO, content));
             }
         }
         return out;
     }
 
-    private List<Notification> forSubscribers(Sheet sheet, SheetEvent e, Notification.Type type, String title, String body) {
+    private List<Notification> forSubscribers(Sheet sheet, SheetEvent e, Notification.Type type, Function<Locale, NotificationTexts.Text> content) {
         List<Notification> out = new ArrayList<>();
         for (User u : subscribers(sheet)) {
-            if (!u.getId().equals(e.actorId())) out.add(build(u.getId(), sheet, e, type, Notification.Severity.INFO, title, body));
+            if (!u.getId().equals(e.actorId())) out.add(build(u.getId(), sheet, e, type, Notification.Severity.INFO, content));
         }
         return out;
     }
@@ -111,8 +114,8 @@ public class NotificationService {
             AccessLevel level = permissions.levelFor(AuthUser.of(u), sheet);
             if (!level.atLeast(AccessLevel.VIEW)) continue;
             out.add(build(u.getId(), sheet, e, Notification.Type.SHEET_SHARED, Notification.Severity.INFO,
-                    e.actorDepartmentName() + " shared \"" + sheet.getName() + "\" with your department",
-                    "Your department now has " + level + " access."));
+                    l -> new NotificationTexts.Text(Messages.text(l, "notice.shared", e.actorDepartmentName(), sheet.getName()),
+                            Messages.text(l, "notice.access", Messages.text(l, "level." + level)))));
         }
         return out;
     }
@@ -124,52 +127,49 @@ public class NotificationService {
     }
 
     private Notification build(Long recipient, Sheet sheet, SheetEvent e, Notification.Type type,
-                               Notification.Severity severity, String title, String message) {
+                               Notification.Severity severity, Function<Locale, NotificationTexts.Text> content) {
         Notification n = new Notification();
         n.setRecipientId(recipient);
         n.setSheetId(sheet.getId());
         n.setBatchId(e.batchId());
         n.setType(type);
         n.setSeverity(severity);
-        n.setTitle(SheetLabels.truncate(title, 255));
-        n.setMessage(message);
+        Map<String, NotificationTexts.Text> translations = new LinkedHashMap<>();
+        for (Locale language : Messages.SUPPORTED) translations.put(language.toLanguageTag(), content.apply(language));
+        NotificationTexts.Text english = translations.get("en");
+        n.setTitle(SheetLabels.truncate(english.title(), 255));
+        n.setMessage(english.message());
+        n.setLocalizedText(NotificationTexts.encode(translations));
         n.setActorName(e.actorName());
         n.setActorDepartment(e.actorDepartmentName());
         n.setCreatedAt(e.at() == null ? Instant.now() : e.at());
         return n;
     }
 
-    static String describeChanges(List<SheetEvent.CellChangePayload> changes) {
+    static String describeChanges(List<SheetEvent.CellChangePayload> changes, Locale locale) {
         StringBuilder sb = new StringBuilder();
         int shown = 0;
         for (SheetEvent.CellChangePayload c : changes) {
             if (shown == MAX_LINES) {
-                sb.append("…and ").append(changes.size() - MAX_LINES).append(" more");
+                sb.append(Messages.text(locale, "notice.more", changes.size() - MAX_LINES));
                 break;
             }
-            sb.append(c.rowLabel()).append(" · ").append(c.columnLabel()).append(": ")
-                    .append(display(c.old())).append(" → ").append(display(c.v())).append('\n');
+            sb.append(NotificationTexts.rowLabel(c.rowLabel(), locale)).append(" · ").append(c.columnLabel()).append(": ")
+                    .append(display(c.old(), locale)).append(" → ").append(display(c.v(), locale)).append('\n');
             shown++;
         }
         return sb.toString().trim();
     }
 
-    private static String describeStructure(SheetEvent e) {
+    private static String describeStructure(SheetEvent e, Locale locale) {
         SheetEvent.StructurePayload s = e.structure();
-        if (s == null) return "The sheet layout changed.";
-        String what = switch (s.op()) {
-            case "INSERT_ROWS" -> "inserted " + s.count() + " row(s) at row " + (s.index() + 1);
-            case "DELETE_ROWS" -> "deleted " + s.count() + " row(s) from row " + (s.index() + 1);
-            case "INSERT_COLS" -> "inserted " + s.count() + " column(s) at " + CellRefs.columnName(s.index());
-            case "DELETE_COLS" -> "deleted " + s.count() + " column(s) from " + CellRefs.columnName(s.index());
-            case "APPEND_ROWS" -> "added " + s.count() + " row(s)";
-            default -> "added " + s.count() + " column(s)";
-        };
-        return e.actorName() + " (" + e.actorDepartmentName() + ") " + what + ".";
+        if (s == null) return Messages.text(locale, "notice.layoutBody");
+        Object position = s.op().endsWith("COLS") ? CellRefs.columnName(s.index()) : s.index() + 1;
+        return Messages.text(locale, "notice." + s.op(), e.actorName(), e.actorDepartmentName(), s.count(), position);
     }
 
-    private static String display(String v) {
-        if (v == null || v.isEmpty()) return "(empty)";
+    private static String display(String v, Locale locale) {
+        if (v == null || v.isEmpty()) return Messages.text(locale, "notice.empty");
         return SheetLabels.truncate(v, 60);
     }
 

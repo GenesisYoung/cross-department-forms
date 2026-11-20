@@ -338,5 +338,7 @@
   "less than": "小於",
   "less or equal": "小於或等於",
   "is empty": "為空",
-  "is not empty": "不為空"
+  "is not empty": "不為空",
+  "Request timed out": "請求逾時",
+  "Network connection failed": "網路連線失敗"
 }

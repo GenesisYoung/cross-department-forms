@@ -48,19 +48,19 @@ public class CellService {
         // 1. validate everything first: the batch is all-or-nothing
         int needRows = sheet.getRowCount(), needCols = sheet.getColCount();
         for (CellEdit e : req.edits()) {
-            if (e.r() >= maxRows || e.c() >= maxCols) throw ApiException.badRequest("Cell " + CellRefs.ref(e.r(), e.c()) + " is beyond the sheet limit");
+            if (e.r() >= maxRows || e.c() >= maxCols) throw ApiException.badRequest("error.cellLimit", CellRefs.ref(e.r(), e.c()));
             String reason = permissions.denyReason(level, user.departmentCode(), sheet, columns.get(e.c()), e.r());
             if (reason != null) {
-                throw ApiException.forbidden("You cannot edit " + CellRefs.ref(e.r(), e.c()) + ": " + reason);
+                throw ApiException.forbidden("error.cellEdit", CellRefs.ref(e.r(), e.c()), reason);
             }
             needRows = Math.max(needRows, e.r() + 1);
             needCols = Math.max(needCols, e.c() + 1);
         }
         if (needCols > sheet.getColCount() && level != AccessLevel.OWNER) {
-            throw ApiException.forbidden("Only the sheet owner can add columns");
+            throw ApiException.forbidden("error.addColumns");
         }
         if (needRows > sheet.getRowCount() && !level.atLeast(AccessLevel.EDIT)) {
-            throw ApiException.forbidden("Your department cannot add rows to this sheet");
+            throw ApiException.forbidden("error.addRows");
         }
         sheet.setRowCount(needRows);
         sheet.setColCount(needCols);

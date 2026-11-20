@@ -1,3 +1,4 @@
+import { locale } from './i18n.js'
 import { Client } from '@stomp/stompjs'
 import { getToken } from './api.js'
 
@@ -18,14 +19,14 @@ export function connectRealtime() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   client = new Client({
     brokerURL: `${proto}://${location.host}/ws`,
-    connectHeaders: { Authorization: `Bearer ${getToken()}` },
+    connectHeaders: { Authorization: `Bearer ${getToken()}`, 'Accept-Language': locale.value },
     reconnectDelay: 3000,
     heartbeatIncoming: 20000,
     heartbeatOutgoing: 20000,
-    beforeConnect: () => { client.connectHeaders = { Authorization: `Bearer ${getToken()}` } },
+    beforeConnect: () => { client.connectHeaders = { Authorization: `Bearer ${getToken()}`, 'Accept-Language': locale.value } },
     onConnect: () => {
       setConnected(true)
-      for (const s of subs.values()) s.stompSub = client.subscribe(s.destination, (m) => s.handler(JSON.parse(m.body)))
+      for (const s of subs.values()) s.stompSub = client.subscribe(s.destination, (m) => s.handler(JSON.parse(m.body)), { 'Accept-Language': locale.value })
     },
     onWebSocketClose: () => setConnected(false),
     onStompError: (f) => console.warn('STOMP error', f.headers.message)
@@ -45,7 +46,7 @@ export function subscribe(destination, handler) {
   const id = nextId++
   const entry = { destination, handler, stompSub: null }
   subs.set(id, entry)
-  if (client?.connected) entry.stompSub = client.subscribe(destination, (m) => handler(JSON.parse(m.body)))
+  if (client?.connected) entry.stompSub = client.subscribe(destination, (m) => handler(JSON.parse(m.body)), { 'Accept-Language': locale.value })
   return () => {
     entry.stompSub?.unsubscribe()
     subs.delete(id)

@@ -20,7 +20,7 @@
               <span class="dept-pill" :style="deptStyle(ch.departmentCode)">{{ ch.departmentName }}</span>
               <el-tag v-if="ch.watched" size="small" type="warning" effect="plain">{{ tr("watched") }}</el-tag>
             </div>
-            <div class="where">{{ ch.cellRef }} · {{ ch.rowLabel }} · {{ ch.columnLabel }}</div>
+            <div class="where">{{ ch.cellRef }} · {{ changeRowLabel(ch) }} · {{ ch.columnLabel }}</div>
             <div class="diff"><span class="old">{{ show(ch.oldValue) }}</span> → <span class="new">{{ show(ch.newValue) }}</span></div>
             <div v-if="ch.acknowledgements?.length" class="acks">
               <span v-for="a in ch.acknowledgements" :key="a.userName" class="ack" :class="{ done: a.acknowledgedAt }"
@@ -36,6 +36,7 @@
 </template>
 
 <script setup>
+import { changeRowLabel } from '../notificationText.js'
 import { tr } from '../i18n.js'
 
 import { computed, ref } from 'vue'
