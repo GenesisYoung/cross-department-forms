@@ -69,6 +69,8 @@
           <el-tooltip :content="tr('Decrease decimal places')"><el-button size="small" class="dec" @click="stepDecimals(-1)">−.0</el-button></el-tooltip>
         </el-button-group>
         <span class="sep"></span>
+        <el-tooltip :content="tr('AutoSum — insert =SUM() for the selected cells')"><el-button size="small" class="sigma" @click="autoSum">Σ</el-button></el-tooltip>
+        <span class="sep"></span>
         <el-dropdown trigger="click" @command="onMerge">
           <el-button size="small" :type="selMerged ? 'primary' : 'default'">{{ tr("Merge") }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
           <template #dropdown>
@@ -261,7 +263,7 @@ import { ArrowLeft, Clock, Share, MoreFilled, Download, DocumentCopy, Setting, D
 import api, { download } from '../api.js'
 import { subscribe, onConnectionChange, CLIENT_ID } from '../realtime.js'
 import { useAuth } from '../stores/auth.js'
-import { createEvaluator, displayValue, isError, colName, FUNCTION_NAMES } from '../formula/engine.js'
+import { createEvaluator, displayValue, isError, colName, cellRef, FUNCTION_NAMES } from '../formula/engine.js'
 import { timeAgo, deptStyle } from '../utils.js'
 import SpreadsheetGrid from '../components/SpreadsheetGrid.vue'
 import ShareDialog from '../components/ShareDialog.vue'
@@ -861,6 +863,48 @@ function onFunctionPick(item) {
   formulaDraft.value = item.value
 }
 
+// ------------------------------------------------------------------ AutoSum (Σ)
+// Excel/Sheets-style: a single selected cell sums the contiguous numbers directly
+// above it (or to its left when there are none above); a multi-cell selection writes a
+// per-column =SUM() into the row just below the selection, giving a totals row.
+function autoSum() {
+  const s = sheet.value
+  if (!s) return
+  const isNum = (r, c) => typeof evaluator.value(r, c) === 'number'
+  const edits = []
+  let target = null
+
+  if (selection.r1 === selection.r2 && selection.c1 === selection.c2) {
+    const r = selection.r, c = selection.c
+    if (canEdit(r, c)) return ElMessage.warning(tr("Can't AutoSum: this cell is read-only"))
+    let top = r
+    while (top - 1 >= 0 && isNum(top - 1, c)) top--
+    let range = null
+    if (top < r) range = cellRef(top, c) + ':' + cellRef(r - 1, c)
+    else {
+      let left = c
+      while (left - 1 >= 0 && isNum(r, left - 1)) left--
+      if (left < c) range = cellRef(r, left) + ':' + cellRef(r, c - 1)
+    }
+    if (!range) return ElMessage.info(tr("No adjacent numbers to sum"))
+    edits.push({ r, c, v: `=SUM(${range})`, s: getStyle(r, c) })
+    target = { r, c }
+  } else {
+    const totalRow = selection.r2 + 1 // just below the selection
+    let blocked = 0
+    for (let c = selection.c1; c <= selection.c2; c++) {
+      if (canEdit(totalRow, c)) { blocked++; continue }
+      const range = cellRef(selection.r1, c) + ':' + cellRef(selection.r2, c)
+      edits.push({ r: totalRow, c, v: `=SUM(${range})`, s: getStyle(totalRow, c) })
+    }
+    if (blocked) ElMessage.warning(tr("{0} read-only cell(s) skipped", [blocked]))
+    if (!edits.length) return
+    target = { r: totalRow, c: selection.c1 }
+  }
+  applyEdits(edits)
+  if (target) grid.value?.select(target.r, target.c)
+}
+
 const stats = computed(() => {
   void renderKey.value
   let count = 0, nums = 0, sum = 0
@@ -1118,6 +1162,7 @@ onBeforeUnmount(() => {
 .access { cursor: help; }
 .toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.toolbar .sigma { font-weight: 700; font-size: 15px; line-height: 1; }
 .toolbar .grow, .status-bar .grow { flex: 1; }
 .fmt { width: 110px; }
 .picker { display: inline-flex; }
