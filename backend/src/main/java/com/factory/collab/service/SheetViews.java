@@ -1,6 +1,9 @@
 package com.factory.collab.service;
 
 import com.factory.collab.config.AuthUser;
+import com.factory.collab.i18n.Messages;
+import com.factory.collab.i18n.NotificationTexts;
+import org.springframework.context.i18n.LocaleContextHolder;
 import com.factory.collab.domain.*;
 import com.factory.collab.dto.Dtos.*;
 import com.factory.collab.repo.*;
@@ -88,8 +91,17 @@ public class SheetViews {
         }
         return changes.stream().map(c -> new ChangeDto(c.getId(), c.getSheetId(), sheetNames.get(c.getSheetId()),
                 c.getBatchId(), c.getRowIdx(), c.getColIdx(), CellRefs.ref(c.getRowIdx(), c.getColIdx()),
-                c.getColumnLabel(), c.getRowLabel(), c.getOldValue(), c.getNewValue(), c.isWatched(),
+                c.getColumnLabel(), NotificationTexts.rowLabel(c.getRowLabel(), LocaleContextHolder.getLocale()), c.getOldValue(), c.getNewValue(), c.isWatched(),
                 c.getUser().getDisplayName(), c.getDepartment().getCode(), c.getDepartment().getName(),
-                c.getChangedAt(), c.isWatched() ? acks.getOrDefault(c.getBatchId(), List.of()) : List.of())).toList();
+                c.getChangedAt(), c.isWatched() ? acks.getOrDefault(c.getBatchId(), List.of()) : List.of(),
+                rowLabels(c.getRowLabel()))).toList();
+    }
+
+    private Map<String, String> rowLabels(String label) {
+        if (label == null) return Map.of();
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (Locale language : Messages.SUPPORTED)
+            labels.put(language.toLanguageTag(), NotificationTexts.rowLabel(label, language));
+        return labels;
     }
 }

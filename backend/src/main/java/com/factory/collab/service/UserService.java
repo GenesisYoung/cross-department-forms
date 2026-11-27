@@ -29,7 +29,7 @@ public class UserService {
         User u = userRepository.findByUsername(req.username().trim())
                 .filter(User::isEnabled)
                 .filter(x -> passwordEncoder.matches(req.password(), x.getPasswordHash()))
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "error.invalidCredentials"));
         return new LoginResponse(jwtService.issue(u), UserDto.of(u));
     }
 
@@ -42,7 +42,7 @@ public class UserService {
     public void changePassword(AuthUser user, ChangePasswordRequest req) {
         User u = userRepository.findById(user.id()).orElseThrow();
         if (!passwordEncoder.matches(req.currentPassword(), u.getPasswordHash())) {
-            throw ApiException.badRequest("Current password is incorrect");
+            throw ApiException.badRequest("error.currentPassword");
         }
         u.setPasswordHash(passwordEncoder.encode(req.newPassword()));
     }
@@ -56,8 +56,8 @@ public class UserService {
 
     @Transactional
     public UserDto createUser(SaveUserRequest req) {
-        if (userRepository.existsByUsername(req.username())) throw ApiException.badRequest("Username already exists");
-        if (req.password() == null) throw ApiException.badRequest("Password is required");
+        if (userRepository.existsByUsername(req.username())) throw ApiException.badRequest("error.usernameExists");
+        if (req.password() == null) throw ApiException.badRequest("error.passwordRequired");
         User u = new User();
         u.setUsername(req.username().trim());
         apply(u, req);
@@ -68,10 +68,10 @@ public class UserService {
     public UserDto updateUser(Long id, SaveUserRequest req, AuthUser actor) {
         User u = userRepository.findById(id).orElseThrow(() -> ApiException.notFound("User"));
         if (!u.getUsername().equals(req.username()) && userRepository.existsByUsername(req.username())) {
-            throw ApiException.badRequest("Username already exists");
+            throw ApiException.badRequest("error.usernameExists");
         }
         if (u.getId().equals(actor.id()) && Boolean.FALSE.equals(req.enabled())) {
-            throw ApiException.badRequest("You cannot disable your own account");
+            throw ApiException.badRequest("error.disableSelf");
         }
         u.setUsername(req.username().trim());
         apply(u, req);
@@ -96,10 +96,10 @@ public class UserService {
     public DepartmentDto saveDepartment(Long id, SaveDepartmentRequest req) {
         Department d = id == null ? new Department() : departmentRepository.findById(id).orElseThrow(() -> ApiException.notFound("Department"));
         departmentRepository.findByCode(req.code()).filter(x -> !x.getId().equals(id))
-                .ifPresent(x -> { throw ApiException.badRequest("Department code already exists"); });
+                .ifPresent(x -> { throw ApiException.badRequest("error.departmentCodeExists"); });
         if (id != null && !d.getCode().equals(req.code())) {
             // Column edit rules reference departments by code.
-            throw ApiException.badRequest("A department's code cannot be changed");
+            throw ApiException.badRequest("error.departmentCodeImmutable");
         }
         d.setCode(req.code());
         d.setName(req.name());

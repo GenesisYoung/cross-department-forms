@@ -169,3 +169,7 @@ WebSocket: STOMP at `/ws` (send `Authorization: Bearer <jwt>` in the CONNECT hea
 * Concurrent edits to the **same cell** are last-write-wins. Each one is still recorded in history and pushed to everyone.
 * No merged cells, charts, or conditional formatting yet.
 # cross-department-forms
+
+## 后端消息语言同步
+
+接口错误与通知已支持英文、简体中文、繁体中文，并跟随前端语言设置。详见[消息来源清单、兼容策略与验证说明](docs/backend-i18n-audit.md)。部署时需执行新增的 Flyway V3 通知语言字段迁移。

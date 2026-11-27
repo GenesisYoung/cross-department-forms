@@ -338,5 +338,7 @@
   "less than": "小于",
   "less or equal": "小于或等于",
   "is empty": "为空",
-  "is not empty": "不为空"
+  "is not empty": "不为空",
+  "Request timed out": "请求超时",
+  "Network connection failed": "网络连接失败"
 }

@@ -10,6 +10,6 @@ public final class CurrentUser {
     public static AuthUser get() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof AuthUser u) return u;
-        throw new ApiException(HttpStatus.UNAUTHORIZED, "Not authenticated");
+        throw new ApiException(HttpStatus.UNAUTHORIZED, "error.unauthorized");
     }
 }

@@ -1,5 +1,6 @@
 package com.factory.collab.service;
 
+import com.factory.collab.i18n.Messages;
 import com.factory.collab.config.ApiException;
 import com.factory.collab.config.AuthUser;
 import com.factory.collab.domain.*;
@@ -225,7 +226,7 @@ public class SheetService {
         for (PermissionEntry e : req.permissions()) {
             if (e.departmentId().equals(sheet.getOwnerDepartment().getId())) continue;
             if (e.level() == AccessLevel.NONE || e.level() == AccessLevel.OWNER) {
-                if (e.level() == AccessLevel.OWNER) throw ApiException.badRequest("OWNER cannot be granted to other departments");
+                if (e.level() == AccessLevel.OWNER) throw ApiException.badRequest("error.ownerGrant");
                 continue;
             }
             Department dept = departmentRepository.findById(e.departmentId()).orElseThrow(() -> ApiException.notFound("Department"));
@@ -249,10 +250,10 @@ public class SheetService {
     public ColumnDto updateColumn(Long id, int col, UpdateColumnRequest req, AuthUser user) {
         Sheet sheet = lock(id);
         permissions.require(user, sheet, AccessLevel.OWNER);
-        if (col < 0 || col >= sheet.getColCount()) throw ApiException.badRequest("Column out of range");
+        if (col < 0 || col >= sheet.getColCount()) throw ApiException.badRequest("error.columnRange");
         List<String> depts = req.editDepartments() == null ? List.of() : req.editDepartments();
         for (String code : depts) {
-            departmentRepository.findByCode(code).orElseThrow(() -> ApiException.badRequest("Unknown department " + code));
+            departmentRepository.findByCode(code).orElseThrow(() -> ApiException.badRequest("error.unknownDepartment", code));
         }
         SheetColumn c = columnRepository.findBySheetIdAndColIndex(id, col).orElseGet(() -> new SheetColumn(id, col));
         c.setTitle(emptyToNull(req.title()));
@@ -269,7 +270,7 @@ public class SheetService {
     public void setColumnWidth(Long id, int col, int width, AuthUser user) {
         Sheet sheet = lock(id);
         permissions.require(user, sheet, AccessLevel.EDIT);
-        if (col < 0 || col >= sheet.getColCount()) throw ApiException.badRequest("Column out of range");
+        if (col < 0 || col >= sheet.getColCount()) throw ApiException.badRequest("error.columnRange");
         SheetColumn c = columnRepository.findBySheetIdAndColIndex(id, col).orElseGet(() -> new SheetColumn(id, col));
         c.setWidth(width);
         columnRepository.save(c);
@@ -311,7 +312,7 @@ public class SheetService {
             case APPEND_COLS -> sheet.setColCount(checkMax(sheet.getColCount() + count, maxCols, "columns"));
             case INSERT_ROWS -> {
                 requireIndex(index, sheet.getRowCount());
-                if (index < sheet.getHeaderRows() && level != AccessLevel.OWNER) throw ApiException.forbidden("Cannot insert into header rows");
+                if (index < sheet.getHeaderRows() && level != AccessLevel.OWNER) throw ApiException.forbidden("error.insertHeader");
                 sheet.setRowCount(checkMax(sheet.getRowCount() + count, maxRows, "rows"));
                 cellRepository.shiftRowsDown(id, index, count);
                 rewriteFormulas(id, f -> FormulaShifter.insert(f, FormulaShifter.Axis.ROW, index, count));
@@ -319,8 +320,8 @@ public class SheetService {
             case DELETE_ROWS -> {
                 requireIndex(index, sheet.getRowCount() - 1);
                 int n = Math.min(count, sheet.getRowCount() - index);
-                if (index < sheet.getHeaderRows() && level != AccessLevel.OWNER) throw ApiException.forbidden("Cannot delete header rows");
-                if (n >= sheet.getRowCount()) throw ApiException.badRequest("A sheet needs at least one row");
+                if (index < sheet.getHeaderRows() && level != AccessLevel.OWNER) throw ApiException.forbidden("error.deleteHeader");
+                if (n >= sheet.getRowCount()) throw ApiException.badRequest("error.oneRow");
                 cellRepository.deleteRows(id, index, index + n);
                 cellRepository.shiftRowsUp(id, index + n, n);
                 sheet.setRowCount(sheet.getRowCount() - n);
@@ -336,7 +337,7 @@ public class SheetService {
             case DELETE_COLS -> {
                 requireIndex(index, sheet.getColCount() - 1);
                 int n = Math.min(count, sheet.getColCount() - index);
-                if (n >= sheet.getColCount()) throw ApiException.badRequest("A sheet needs at least one column");
+                if (n >= sheet.getColCount()) throw ApiException.badRequest("error.oneColumn");
                 cellRepository.deleteCols(id, index, index + n);
                 cellRepository.shiftColsLeft(id, index + n, n);
                 columnRepository.deleteRange(id, index, index + n);
@@ -366,7 +367,7 @@ public class SheetService {
         Long workbookId;
         if (!anchor.inWorkbook()) {
             anchor.setWorkbookId(anchor.getId());
-            if (anchor.getTabName() == null) anchor.setTabName("Sheet 1");
+            if (anchor.getTabName() == null) anchor.setTabName(Messages.text("label.tab", 1));
             anchor.setTabIndex(0);
             sheetRepository.save(anchor);
             workbookId = anchor.getId();
@@ -375,7 +376,7 @@ public class SheetService {
             workbookId = anchor.getWorkbookId();
         }
         int nextIndex = tabs.stream().mapToInt(Sheet::getTabIndex).max().orElse(-1) + 1;
-        String tabName = uniqueTabName(name == null || name.isBlank() ? "Sheet " + (nextIndex + 1) : name.trim(), tabs);
+        String tabName = uniqueTabName(name == null || name.isBlank() ? Messages.text("label.tab", nextIndex + 1) : name.trim(), tabs);
 
         TemplateDefinition def = new TemplateDefinition(clamp(100, 1, maxRows), clamp(12, 1, maxCols), 1, List.of(), List.of());
         Sheet tab = createFromDefinition(anchor.getName(), anchor.getDescription(), anchor.getOwnerDepartment(), null, def, user);
@@ -399,8 +400,8 @@ public class SheetService {
     public SheetDetail renameTab(Long id, String name, AuthUser user) {
         Sheet sheet = lock(id);
         AccessLevel level = permissions.require(user, sheet, AccessLevel.OWNER);
-        if (!sheet.inWorkbook()) throw ApiException.badRequest("Add a second worksheet before naming it");
-        if (name == null || name.isBlank()) throw ApiException.badRequest("A worksheet name is required");
+        if (!sheet.inWorkbook()) throw ApiException.badRequest("error.tabBeforeName");
+        if (name == null || name.isBlank()) throw ApiException.badRequest("error.tabName");
         List<Sheet> others = tabsOf(sheet).stream().filter(t -> !t.getId().equals(id)).toList();
         sheet.setTabName(uniqueTabName(SheetLabels.truncate(name.trim(), 100), others));
         sheet.touch();
@@ -414,9 +415,9 @@ public class SheetService {
     public SheetDetail deleteTab(Long id, AuthUser user) {
         Sheet target = lock(id);
         permissions.require(user, target, AccessLevel.OWNER);
-        if (!target.inWorkbook()) throw ApiException.badRequest("This is not a workbook worksheet");
+        if (!target.inWorkbook()) throw ApiException.badRequest("error.notWorkbook");
         List<Sheet> tabs = tabsOf(target);
-        if (tabs.size() <= 1) throw ApiException.badRequest("A workbook must keep at least one worksheet");
+        if (tabs.size() <= 1) throw ApiException.badRequest("error.oneTab");
         Long workbookId = target.getWorkbookId();
         List<Sheet> remaining = tabs.stream().filter(t -> !t.getId().equals(id))
                 .sorted(Comparator.comparingInt(Sheet::getTabIndex)).collect(Collectors.toList());
@@ -467,14 +468,14 @@ public class SheetService {
     }
 
     public void requireCreator(AuthUser user) {
-        if (user.role() == Role.MEMBER) throw ApiException.forbidden("Only department managers can create sheets");
+        if (user.role() == Role.MEMBER) throw ApiException.forbidden("error.createManager");
     }
 
     public Department resolveOwnerDepartment(Long requested, AuthUser user) {
         if (requested == null || requested.equals(user.departmentId())) {
             return departmentRepository.findById(user.departmentId()).orElseThrow();
         }
-        if (user.role() != Role.ADMIN) throw ApiException.forbidden("You can only create sheets for your own department");
+        if (user.role() != Role.ADMIN) throw ApiException.forbidden("error.createDepartment");
         return departmentRepository.findById(requested).orElseThrow(() -> ApiException.notFound("Department"));
     }
 
@@ -485,11 +486,11 @@ public class SheetService {
     }
 
     private static void requireIndex(int index, int maxInclusive) {
-        if (index < 0 || index > maxInclusive) throw ApiException.badRequest("Index out of range");
+        if (index < 0 || index > maxInclusive) throw ApiException.badRequest("error.indexRange");
     }
 
     private static int checkMax(int value, int max, String what) {
-        if (value > max) throw ApiException.badRequest("A sheet can have at most " + max + " " + what);
+        if (value > max) throw ApiException.badRequest("error.max." + what, max);
         return value;
     }
 

@@ -81,8 +81,8 @@
         </div>
         <div v-for="n in data.importantUnread" :key="n.id" class="attn-item">
           <div class="attn-body">
-            <div class="attn-title">{{ n.title }}</div>
-            <pre class="attn-msg">{{ n.message }}</pre>
+            <div class="attn-title">{{ notificationText(n).title }}</div>
+            <pre class="attn-msg">{{ notificationText(n).message }}</pre>
             <div class="muted">
               {{ n.actorName }} · {{ n.actorDepartment }} ·
               {{ timeAgo(n.createdAt) }}
@@ -159,7 +159,7 @@
                 <span class="muted">{{ timeAgo(ch.changedAt) }}</span>
               </div>
               <div class="feed-where">
-                {{ ch.sheetName }} · {{ ch.rowLabel }}
+                {{ ch.sheetName }} · {{ changeRowLabel(ch) }}
               </div>
               <div class="feed-diff">
                 {{ ch.columnLabel }}: <s>{{ show(ch.oldValue) }}</s> →
@@ -220,6 +220,7 @@
 </template>
 
 <script setup>
+import { notificationText, changeRowLabel } from '../notificationText.js'
 import { tr } from "../i18n.js";
 
 import { Plus, Upload } from "@element-plus/icons-vue";

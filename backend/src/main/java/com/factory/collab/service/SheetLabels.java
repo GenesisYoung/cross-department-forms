@@ -24,7 +24,7 @@ final class SheetLabels {
                 return truncate(header.getRawValue(), 120);
             }
         }
-        return "Column " + CellRefs.columnName(c);
+        return CellRefs.columnName(c);
     }
 
     /** Identifies a data row by its first two non-formula values, e.g. "PO-2401 · M-1002". */

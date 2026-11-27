@@ -1,5 +1,6 @@
 package com.factory.collab.service;
 
+import com.factory.collab.i18n.Messages;
 import com.factory.collab.config.ApiException;
 import com.factory.collab.config.AuthUser;
 import com.factory.collab.domain.*;
@@ -75,18 +76,18 @@ public class ImportExportService {
                     parsed.put(tab, def);
                 }
             } catch (org.apache.poi.EmptyFileException | org.apache.poi.openxml4j.exceptions.NotOfficeXmlFileException e) {
-                throw ApiException.badRequest("The file is empty or not a valid Excel workbook");
+                throw ApiException.badRequest("error.invalidExcel");
             }
         } else {
-            throw ApiException.badRequest("Supported formats: .xlsx, .xls, .csv");
+            throw ApiException.badRequest("error.formats");
         }
-        if (parsed.isEmpty()) throw ApiException.badRequest("No data found in the file");
+        if (parsed.isEmpty()) throw ApiException.badRequest("error.noData");
 
         String sheetName = SheetLabels.truncate(base, 160);
         boolean workbook = parsed.size() > 1;
         List<com.factory.collab.domain.Sheet> tabs = new ArrayList<>();
         for (var entry : parsed.entrySet()) {
-            var sheet = sheetService.createFromDefinition(sheetName, "Imported from " + filename, dept, null, entry.getValue(), user);
+            var sheet = sheetService.createFromDefinition(sheetName, Messages.text("label.imported", filename), dept, null, entry.getValue(), user);
             if (workbook) {
                 sheet.setWorkbookId(tabs.isEmpty() ? sheet.getId() : tabs.get(0).getId());
                 sheet.setTabName(entry.getKey());
@@ -337,7 +338,7 @@ public class ImportExportService {
 
     private static String safeSheetName(String name) {
         String s = name.replaceAll("[\\\\/?*\\[\\]:]", " ").trim();
-        if (s.isEmpty()) s = "Sheet1";
+        if (s.isEmpty()) s = Messages.text("label.tab", 1);
         return s.length() > 31 ? s.substring(0, 31) : s;
     }
 }

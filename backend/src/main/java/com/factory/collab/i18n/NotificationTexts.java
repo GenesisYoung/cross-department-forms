@@ -1,0 +1,83 @@
+package com.factory.collab.i18n;
+
+import com.factory.collab.domain.Notification;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.*;
+import java.util.regex.*;
+
+/** REST and STOMP carry all language snapshots, so switching needs no refetch. */
+public final class NotificationTexts {
+    public record Text(String title, String message) {}
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private NotificationTexts() {}
+    public static String encode(Map<String, Text> translations) {
+        try { return JSON.writeValueAsString(translations); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("Cannot encode notification", e); }
+    }
+    public static Map<String, Text> all(Notification n) {
+        if (n.getLocalizedText() != null) {
+            try {
+                Map<String, Text> texts = JSON.readValue(n.getLocalizedText(), new TypeReference<>() {});
+                if (texts != null && Messages.SUPPORTED.stream().allMatch(l -> {
+                    Text t = texts.get(l.toLanguageTag());
+                    return t != null && t.title() != null && t.message() != null;
+                })) return texts;
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) { /* readable historical fallback */ }
+        }
+        Map<String, Text> texts = new LinkedHashMap<>();
+        for (Locale locale : Messages.SUPPORTED) texts.put(locale.toLanguageTag(), legacy(n, locale));
+        return texts;
+    }
+    /** Read-only adapter for exact pre-V3 templates. Arbitrary cell values remain verbatim. */
+    private static Text legacy(Notification n, Locale locale) {
+        String title = n.getTitle(), body = n.getMessage();
+        if (Locale.ENGLISH.equals(locale)) return new Text(title, body);
+        Matcher key = Pattern.compile("^⚠ (\\d+) key changes? in (.*)$", Pattern.DOTALL).matcher(title);
+        Matcher cells = Pattern.compile("^(\\d+) cells? updated in (.*)$", Pattern.DOTALL).matcher(title);
+        if (n.getType() == Notification.Type.CELLS_CHANGED && (key.matches() || cells.matches())) {
+            Matcher match = key.matches() ? key : cells;
+            title = Messages.text(locale, key.matches() ? "notice.key.many" : "notice.cells.many", match.group(1), match.group(2));
+            // Old snapshots conflate literal '(empty)' and empty values; do not guess at audit values.
+            int lastLine = body.lastIndexOf('\n');
+            Matcher more = Pattern.compile("^…and (\\d+) more$").matcher(body.substring(lastLine + 1));
+            if (more.matches()) body = body.substring(0, lastLine + 1) + Messages.text(locale, "notice.more", more.group(1));
+        } else if (n.getType() == Notification.Type.STRUCTURE_CHANGED) {
+            String prefix = "Layout changed in ";
+            if (title.startsWith(prefix)) title = Messages.text(locale, "notice.layout", title.substring(prefix.length()));
+            String actor = n.getActorName() + " (" + n.getActorDepartment() + ") ";
+            if (body.equals("The sheet layout changed.")) body = Messages.text(locale, "notice.layoutBody");
+            else if (body.startsWith(actor)) {
+                String[][] ops = {
+                    {"INSERT_ROWS", "inserted (\\d+) row\\(s\\) at row (\\d+)\\."},
+                    {"DELETE_ROWS", "deleted (\\d+) row\\(s\\) from row (\\d+)\\."},
+                    {"INSERT_COLS", "inserted (\\d+) column\\(s\\) at ([A-Z]+)\\."},
+                    {"DELETE_COLS", "deleted (\\d+) column\\(s\\) from ([A-Z]+)\\."},
+                    {"APPEND_ROWS", "added (\\d+) row\\(s\\)\\."},
+                    {"APPEND_COLS", "added (\\d+) column\\(s\\)\\."}
+                };
+                for (String[] op : ops) {
+                    Matcher m = Pattern.compile(op[1]).matcher(body.substring(actor.length()));
+                    if (m.matches()) {
+                        body = Messages.text(locale, "notice." + op[0], n.getActorName(), n.getActorDepartment(), m.group(1), m.groupCount() > 1 ? m.group(2) : "");
+                        break;
+                    }
+                }
+            }
+        } else if (n.getType() == Notification.Type.SHEET_SHARED) {
+            String prefix = n.getActorDepartment() + " shared \"", suffix = "\" with your department";
+            if (title.startsWith(prefix) && title.endsWith(suffix))
+                title = Messages.text(locale, "notice.shared", n.getActorDepartment(), title.substring(prefix.length(), title.length() - suffix.length()));
+            Matcher m = Pattern.compile("^Your department now has (NONE|VIEW|EDIT|OWNER) access\\.$").matcher(body);
+            if (m.matches()) body = Messages.text(locale, "notice.access", Messages.text(locale, "level." + m.group(1)));
+        }
+        return new Text(title, body);
+    }
+    /** Row labels are generated by SheetLabels.row; preserve the user-data suffix. */
+    public static String rowLabel(String label, Locale locale) {
+        if ("Header".equals(label)) return Messages.text(locale, "label.header");
+        if (label == null) return null;
+        Matcher row = Pattern.compile("^Row (\\d+)(.*)$", Pattern.DOTALL).matcher(label);
+        return row.matches() ? Messages.text(locale, "label.row", row.group(1)) + row.group(2) : label;
+    }
+}

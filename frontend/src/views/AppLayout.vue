@@ -43,8 +43,8 @@
             </div>
             <el-empty v-if="!latest.length" :description="tr('Nothing yet')" :image-size="60" />
             <div v-for="n in latest" :key="n.id" class="pop-item" :class="{ unread: !n.readAt, important: n.severity === 'IMPORTANT' }" @click="openNotification(n)">
-              <div class="pop-title">{{ n.title }}</div>
-              <div class="pop-msg">{{ n.message.split('\n')[0] }}</div>
+              <div class="pop-title">{{ notificationText(n).title }}</div>
+              <div class="pop-msg">{{ notificationText(n).message.split('\n')[0] }}</div>
               <div class="pop-meta">{{ n.actorName }} · {{ timeAgo(n.createdAt) }}</div>
             </div>
             <el-button link type="primary" class="see-all" @click="$router.push('/notifications')">{{ tr("See all") }}</el-button>
@@ -85,6 +85,7 @@
 </template>
 
 <script setup>
+import { notificationText } from '../notificationText.js'
 import ThemeSelect from '../components/ThemeSelect.vue'
 import LanguageSelect from '../components/LanguageSelect.vue'
 import { tr } from '../i18n.js'

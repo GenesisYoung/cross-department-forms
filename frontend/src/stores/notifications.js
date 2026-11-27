@@ -1,3 +1,5 @@
+import { h } from 'vue'
+import NotificationContent from '../components/NotificationContent.js'
 import { defineStore } from 'pinia'
 import { ElNotification } from 'element-plus'
 import api from '../api.js'
@@ -22,8 +24,7 @@ export const useNotifications = defineStore('notifications', {
         this.latest = this.latest.slice(0, 20)
         this.version++
         const toast = ElNotification({
-          title: n.title,
-          message: `${n.message.split('\n').slice(0, 3).join('\n')}\n— ${n.actorName ?? ''} (${n.actorDepartment ?? ''})`,
+          message: h(NotificationContent, { notification: n }),
           type: n.severity === 'IMPORTANT' ? 'warning' : 'info',
           duration: n.severity === 'IMPORTANT' ? 0 : 6000,
           customClass: 'notify-toast',

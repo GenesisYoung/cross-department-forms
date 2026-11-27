@@ -84,7 +84,7 @@ public class TemplateService {
         t.setDepartment(sheetService.resolveOwnerDepartment(req.departmentId(), user));
         TemplateDefinition d = req.definition();
         for (CellDto c : d.cells()) {
-            if (c.r() >= d.rowCount() || c.c() >= d.colCount()) throw ApiException.badRequest("Template cell outside its grid");
+            if (c.r() >= d.rowCount() || c.c() >= d.colCount()) throw ApiException.badRequest("error.templateCell");
         }
         t.setDefinition(codec.encode(d));
     }
@@ -92,7 +92,7 @@ public class TemplateService {
     private void requireManage(SheetTemplate t, AuthUser user) {
         boolean ok = user.role() == Role.ADMIN
                 || (user.role() == Role.MANAGER && t.getDepartment() != null && t.getDepartment().getId().equals(user.departmentId()));
-        if (!ok) throw ApiException.forbidden("Only the owning department's manager can change this template");
+        if (!ok) throw ApiException.forbidden("error.templateOwner");
     }
 
     private TemplateDto toDto(SheetTemplate t) {

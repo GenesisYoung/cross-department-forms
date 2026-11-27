@@ -1,4 +1,4 @@
-import { tr } from './i18n.js'
+import { tr, locale } from './i18n.js'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
@@ -14,29 +14,34 @@ export function setToken(token) {
 const api = axios.create({ baseURL: '/api', timeout: 30000 })
 
 api.interceptors.request.use((cfg) => {
+  cfg.headers['Accept-Language'] = locale.value
   const t = getToken()
   if (t) cfg.headers.Authorization = `Bearer ${t}`
   return cfg
 })
 
 api.interceptors.response.use(
-  (res) => res.data,
-  (err) => {
+  (res) => res.config.fullResponse ? res : res.data,
+  async (err) => {
     const status = err.response?.status
-    const message = err.response?.data?.message || err.message || 'Request failed'
-    if (status === 401 && !err.config.url.includes('/auth/login')) {
+    let data = err.response?.data
+    if (typeof Blob !== 'undefined' && data instanceof Blob) {
+      try { data = JSON.parse(await data.text()) } catch { data = null }
+    }
+    const message = data?.message || tr(err.code === 'ECONNABORTED' ? 'Request timed out' : err.response ? 'Request failed' : 'Network connection failed')
+    if (status === 401 && !err.config?.url?.includes('/auth/login')) {
       setToken(null)
       if (!location.pathname.startsWith('/login')) location.href = '/login?expired=1'
-    } else if (!err.config.silent) {
-      ElMessage.error(tr(message))
+    } else if (!err.config?.silent) {
+      ElMessage.error(message)
     }
-    return Promise.reject(Object.assign(new Error(message), { status }))
+    return Promise.reject(Object.assign(new Error(message), { status, code: data?.code }))
   }
 )
 
 /** Downloads a file with the auth header (keeps the token out of URLs). */
 export async function download(url, fallbackName) {
-  const res = await axios.get('/api' + url, { responseType: 'blob', headers: { Authorization: `Bearer ${getToken()}` } })
+  const res = await api.get(url, { responseType: 'blob', fullResponse: true })
   const cd = res.headers['content-disposition'] || ''
   const m = /filename\*=UTF-8''([^;]+)/.exec(cd) || /filename="?([^";]+)"?/.exec(cd)
   const name = m ? decodeURIComponent(m[1]) : fallbackName

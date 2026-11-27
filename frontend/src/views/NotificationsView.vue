@@ -18,10 +18,10 @@
     <div class="list" v-loading="loading">
       <el-empty v-if="!loading && !shown.length" :description="tr('You\'re all caught up')" />
       <div v-for="n in shown" :key="n.id" class="item" :class="{ unread: !n.readAt, important: n.severity === 'IMPORTANT' }">
-        <el-icon class="icon"><component :is="n.severity === 'IMPORTANT' ? 'WarningFilled' : n.type === 'SHEET_SHARED' ? tr('Share') : 'InfoFilled'" /></el-icon>
+        <el-icon class="icon"><component :is="n.severity === 'IMPORTANT' ? 'WarningFilled' : n.type === 'SHEET_SHARED' ? 'Share' : 'InfoFilled'" /></el-icon>
         <div class="body">
-          <div class="title">{{ n.title }}</div>
-          <pre class="msg">{{ n.message }}</pre>
+          <div class="title">{{ notificationText(n).title }}</div>
+          <pre class="msg">{{ notificationText(n).message }}</pre>
           <div class="meta">
             {{ n.actorName }} · {{ n.actorDepartment }} · {{ formatTime(n.createdAt) }}
             <span v-if="n.readAt"> · {{ n.severity === 'IMPORTANT' ? tr('acknowledged') : tr('read') }} {{ timeAgo(n.readAt) }}</span>
@@ -40,6 +40,7 @@
 </template>
 
 <script setup>
+import { notificationText } from '../notificationText.js'
 import { tr } from '../i18n.js'
 
 import { computed, ref, watch } from 'vue'
