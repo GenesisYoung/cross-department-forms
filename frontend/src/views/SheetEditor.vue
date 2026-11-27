@@ -426,12 +426,13 @@ function setLocal(r, c, v, s) {
  * edits: [{ r, c, v, s }] where s may be an object (from the grid) or a JSON string.
  * Applies optimistically, sends to the server, reverts on failure.
  */
-async function applyEdits(edits, { record = true } = {}) {
+async function applyEdits(edits, { record = true, pin = true } = {}) {
   const s = sheet.value
   if (!s || !edits.length) return
   const norm = edits.map((e) => ({ r: e.r, c: e.c, v: e.v === '' ? null : e.v ?? null, s: typeof e.s === 'string' ? e.s : styleString(e.s) }))
   const before = norm.map((e) => ({ r: e.r, c: e.c, v: getRaw(e.r, e.c), s: cells.value.get(key(e.r, e.c))?.s ?? null }))
   for (const e of norm) setLocal(e.r, e.c, e.v, e.s)
+  if (pin) pinRows(norm.map((e) => e.r)) // a row being filled in mustn't vanish mid-edit under a filter
   const maxR = Math.max(...norm.map((e) => e.r)), maxC = Math.max(...norm.map((e) => e.c))
   if (maxR >= s.rowCount) s.rowCount = maxR + 1
   if (maxC >= s.colCount) s.colCount = maxC + 1
@@ -672,7 +673,7 @@ function sortRange(desc) {
       if (src[j].v !== curV || src[j].s !== curS) edits.push({ r, c, v: src[j].v, s: src[j].s })
     }
   }
-  if (edits.length) { applyEdits(edits); ElMessage.success(tr("Sorted {0} rows by column {1}", [order.length, colName(keyCol)])) }
+  if (edits.length) { applyEdits(edits, { pin: false }); ElMessage.success(tr("Sorted {0} rows by column {1}", [order.length, colName(keyCol)])) }
   grid.value?.focus()
 }
 const onSort = (cmd) => sortRange(cmd === 'desc')
@@ -719,13 +720,63 @@ function matchFilter(r, f) {
     default: return true
   }
 }
+// Rows that stay visible under the current filter even though they don't match it: rows
+// added or typed into while the filter is on (otherwise a blank new row vanishes the moment
+// it's created, so you can't fill it in). Like Excel, they stay until the filter is changed.
+const pinnedRows = ref(new Set())
+const pinRows = (rows) => {
+  if (!activeFilters.value.length) return
+  const next = new Set(pinnedRows.value)
+  for (const r of rows) next.add(r)
+  pinnedRows.value = next
+}
+/** Keeps pinned row indices aligned after a local row insert/delete. */
+function shiftPinned(op, index, count) {
+  if (!pinnedRows.value.size) return
+  const next = new Set()
+  for (const r of pinnedRows.value) {
+    if (op === 'INSERT_ROWS') next.add(r >= index ? r + count : r)
+    else if (op === 'DELETE_ROWS') { if (r < index) next.add(r); else if (r >= index + count) next.add(r - count) }
+    else next.add(r)
+  }
+  pinnedRows.value = next
+}
+watch(activeFilters, () => { pinnedRows.value = new Set() })
+
+// Totals rows (what AutoSum writes): a row holding a SUM/SUBTOTAL over a multi-row range that
+// ends above it. These summarise the data and are never filtered out. A per-row SUM over cells
+// in its own row (e.g. =SUM(A2:C2)) doesn't count, so ordinary data rows still filter.
+const TOTALS_RE = /\b(?:SUM|SUBTOTAL)\s*\(([^)]*)\)/gi
+const RANGE_RE = /\$?[A-Z]+\$?(\d+)\s*:\s*\$?[A-Z]+\$?(\d+)/gi
+function isTotalsFormula(v, r) {
+  if (typeof v !== 'string' || !v.startsWith('=')) return false
+  for (const m of v.matchAll(TOTALS_RE)) {
+    for (const rg of m[1].matchAll(RANGE_RE)) {
+      const a = Number(rg[1]) - 1, b = Number(rg[2]) - 1
+      if (Math.min(a, b) < Math.max(a, b) && Math.max(a, b) < r) return true
+    }
+  }
+  return false
+}
+const totalsRows = computed(() => {
+  void renderKey.value
+  const out = new Set()
+  for (const [k, e] of cells.value) {
+    const r = Number(k.slice(0, k.indexOf(',')))
+    if (!out.has(r) && isTotalsFormula(e?.v, r)) out.add(r)
+  }
+  return out
+})
+
 const hiddenRows = computed(() => {
   void renderKey.value
   const fs = activeFilters.value
   const hidden = new Set()
   if (!fs.length || !sheet.value) return hidden
   const hr = sheet.value.headerRows
+  const pinned = pinnedRows.value, totals = totalsRows.value
   for (let r = hr; r < sheet.value.rowCount; r++) {
+    if (pinned.has(r) || totals.has(r)) continue
     if (!fs.every((f) => matchFilter(r, f))) hidden.add(r)
   }
   return hidden
@@ -924,7 +975,12 @@ const fmt = (n) => displayValue(Math.round(n * 1e6) / 1e6, '#,##0.##')
 
 // ------------------------------------------------------------------ structure & columns
 async function structure(op, index, count) {
+  const prevRows = sheet.value.rowCount
   const detail = await api.post(`/sheets/${sheet.value.id}/structure`, { op, index, count, clientId: CLIENT_ID })
+  // keep new rows visible under an active filter (they're blank, so they'd be hidden at once)
+  shiftPinned(op, index, count)
+  if (op === 'INSERT_ROWS') pinRows(Array.from({ length: count }, (_, i) => index + i))
+  else if (op === 'APPEND_ROWS') pinRows(Array.from({ length: count }, (_, i) => prevRows + i))
   undoStack.value = []
   redoStack.value = []
   loadDetail(detail)
@@ -1103,6 +1159,7 @@ function onSheetEvent(e) {
   // structure / meta / sharing changes: reload authoritative state
   if (!mine) {
     if (e.type === 'STRUCTURE_CHANGED') {
+      pinnedRows.value = new Set() // row indices shifted under us
       undoStack.value = []
       redoStack.value = []
       ElMessage.info(tr("{0} changed the sheet layout", [e.actorName]))
